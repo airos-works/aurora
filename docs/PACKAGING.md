@@ -59,8 +59,11 @@ engine in `$ORIGIN/webkit/lib`, then in the shared engine install locations
 compiled into its RPATH (see `ENGINE_RPATH` in the Makefile). It sets
 `WEBKIT_EXEC_PATH` itself, to the bundle it loaded, so that WebKit finds
 WebProcess and NetworkProcess. If a private Mesa exists (`AURORA_MESA_LIB`,
-the engine bundle's `mesa/lib`, or Summit's `/boot/home/summit-mesa/prefix/lib`),
-the host restarts itself once with that Mesa first in `LIBRARY_PATH`.
+the engine's `mesa/lib`, or Summit's `/boot/home/summit-mesa/prefix/lib`), the
+host puts it first in `LIBRARY_PATH` for the engine's processes, which inherit
+it. The host does not restart itself to pick the Mesa up: an app launched by
+Tracker or Deskbar would lose the message port the roster made for it and
+spin.
 
 That Mesa's glvnd `libEGL` finds the Mesa driver only through a vendor file
 (`egl_vendor.d/*.json`) in directories fixed when it was built. Without one,

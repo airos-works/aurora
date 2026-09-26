@@ -89,7 +89,7 @@ int main(int argc, char** argv)
         if (!strcmp(argv[index], "--signature"))
             signature = argv[index + 1];
     }
-    aurora::ReexecForPrivateLibraries(argv);
+    aurora::UsePrivateLibraries();
     aurora::SetEngineExecutablePath();
     // Started from Deskbar as a packaged app: run the app's runtime as our child.
     if (!aurora::StartRuntimeIfLauncher(argc, argv))

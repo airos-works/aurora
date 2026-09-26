@@ -62,10 +62,8 @@ static void UseEglVendor(const std::string& mesa)
     }
 }
 
-void ReexecForPrivateLibraries(char** argv)
+void UsePrivateLibraries()
 {
-    if (getenv("AURORA_HOST_REEXEC"))
-        return;
     // The engine's own libraries stay where the runtime path finds them.
     std::string engine = ImagePath("libWebKit.so", B_LIBRARY_IMAGE);
     std::string mesa = getenv("AURORA_MESA_LIB") ? getenv("AURORA_MESA_LIB") : "";
@@ -93,15 +91,14 @@ void ReexecForPrivateLibraries(char** argv)
     std::string current = getenv("LIBRARY_PATH") ? getenv("LIBRARY_PATH") : "";
     if (current.rfind(mesa, 0) == 0)
         return;
+    // For the engine's processes, which inherit it. Not for this one: it
+    // would have to restart itself, and a restarted app loses the port the
+    // roster made for it when Tracker or Deskbar launched it.
     std::string paths = mesa;
     if (!engine.empty())
         paths += ":" + engine.substr(0, engine.rfind('/'));
     paths += ":" + (current.empty() ? std::string("/boot/system/lib") : current);
     setenv("LIBRARY_PATH", paths.c_str(), 1);
-    setenv("AURORA_HOST_REEXEC", "1", 1);
-    std::string self = ImagePath(nullptr, B_APP_IMAGE);
-    if (!self.empty())
-        execv(self.c_str(), argv);
 }
 
 void SetEngineExecutablePath()

@@ -1,20 +1,24 @@
-# Builds aurora-host natively on Haiku against a Summit WebKit bundle.
-#   make WEBKIT_BUNDLE=/path/to/bundle            (headers from the bundle's source/include)
+# Builds aurora-host natively on Haiku against Summit's WebKit engine.
+#   make                                           (the installed summit_webkit package)
+#   make WEBKIT_BUNDLE=/path/to/bundle            (a bundle, headers in its include/)
 #   make WEBKIT_BUNDLE=... WEBKIT_INCLUDE=...      (headers from elsewhere)
 #   make ... LEGACY_ENGINE=1                       (a bundle from before 2026-09-21)
 
-WEBKIT_BUNDLE ?= /boot/home/summit/build-modern-browser/current
-WEBKIT_INCLUDE ?= $(WEBKIT_BUNDLE)/source/include
+# By default the installed summit_webkit package, headers from its develop
+# directory; a bundle has them in include/ (or source/include).
+WEBKIT_BUNDLE ?= /boot/system/lib/summit-webkit
+WEBKIT_INCLUDE ?= $(firstword $(wildcard $(WEBKIT_BUNDLE)/include $(WEBKIT_BUNDLE)/source/include) /boot/system/develop/headers/summit-webkit)
 LEGACY_ENGINE ?= 0
 BUILD ?= build
 CXX ?= g++
 CXXFLAGS ?= -O2 -g
 CXXFLAGS += -std=c++20 -Wall -Wextra -Wno-multichar -Wno-unused-parameter \
 	-Ihost -Ihost/vendor -I$(WEBKIT_INCLUDE) -DAURORA_LEGACY_ENGINE=$(LEGACY_ENGINE)
-# Where a launcher started from Deskbar finds the engine: beside it, or in the
-# shared install of Summit's engine, a flat directory with libWebKit, its ICU,
-# WebProcess and NetworkProcess (a summit_webkit package, or non-packaged).
-ENGINE_RPATH ?= $$ORIGIN/webkit:$$ORIGIN/webkit/lib:/boot/system/lib/summit-webkit:/boot/home/config/non-packaged/lib/summit-webkit
+# Where a launcher started from Deskbar finds the engine: a bundle beside it
+# (webkit/lib), or the shared install of Summit's engine, whose lib/ holds
+# libWebKit and its ICU (the summit_webkit package, or the same layout
+# non-packaged; a flat non-packaged directory also works).
+ENGINE_RPATH ?= $$ORIGIN/webkit/lib:$$ORIGIN/webkit:/boot/system/lib/summit-webkit/lib:/boot/home/config/non-packaged/lib/summit-webkit/lib:/boot/home/config/non-packaged/lib/summit-webkit
 LIBS = -L$(WEBKIT_BUNDLE)/lib -lWebKit -lbe -ltracker -Wl,-rpath,'$(ENGINE_RPATH)'
 
 
