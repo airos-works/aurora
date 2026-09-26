@@ -55,6 +55,10 @@ private:
     void Destroy();
     void SendWindowEvent(const char* type);
     json WindowBounds() const;
+    // Electron's bounds include the window's border and tab; BWindow's frame
+    // is the content. These are the decorator's widths on each side.
+    BRect DecoratorInsets() const;
+    void SetOuterBounds(float x, float y, float width, float height);
     void SetFullScreen(bool);
 
     const int32 fIdentifier;

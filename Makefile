@@ -11,9 +11,10 @@ CXX ?= g++
 CXXFLAGS ?= -O2 -g
 CXXFLAGS += -std=c++20 -Wall -Wextra -Wno-multichar -Wno-unused-parameter \
 	-Ihost -Ihost/vendor -I$(WEBKIT_INCLUDE) -DAURORA_LEGACY_ENGINE=$(LEGACY_ENGINE)
-# Where a launcher started from Deskbar finds the engine: beside it, or in a
-# shared install of Summit's engine.
-ENGINE_RPATH ?= $$ORIGIN/webkit/lib:/boot/system/data/summit/webkit/lib:/boot/home/config/non-packaged/data/summit/webkit/lib
+# Where a launcher started from Deskbar finds the engine: beside it, or in the
+# shared install of Summit's engine, a flat directory with libWebKit, its ICU,
+# WebProcess and NetworkProcess (a summit_webkit package, or non-packaged).
+ENGINE_RPATH ?= $$ORIGIN/webkit:$$ORIGIN/webkit/lib:/boot/system/lib/summit-webkit:/boot/home/config/non-packaged/lib/summit-webkit
 LIBS = -L$(WEBKIT_BUNDLE)/lib -lWebKit -lbe -ltracker -Wl,-rpath,'$(ENGINE_RPATH)'
 
 

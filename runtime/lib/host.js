@@ -50,17 +50,23 @@ function locate() {
     path.join(runtimeRoot, '..', 'build', 'aurora-host'),
   ].filter(Boolean);
   const host = hostCandidates.find(exists) || hostCandidates[hostCandidates.length - 1];
+  // A Summit bundle (lib/, WebProcess) or the shared engine install (one
+  // directory with libWebKit.so.1 and WebProcess).
   const bundleCandidates = [
     process.env.AURORA_WEBKIT_BUNDLE,
     settings.webkitBundle,
     path.join(runtimeRoot, 'webkit'),
-    '/boot/system/data/summit/webkit',
-    '/boot/home/config/non-packaged/data/summit/webkit',
+    '/boot/system/lib/summit-webkit',
+    '/boot/home/config/non-packaged/lib/summit-webkit',
   ].filter(Boolean);
-  const bundle = bundleCandidates.find((candidate) => fs.existsSync(path.join(candidate, 'lib'))) || null;
+  const bundle = bundleCandidates.find((candidate) => fs.existsSync(path.join(candidate, 'WebProcess'))) || null;
   const mesaCandidates = [process.env.AURORA_MESA_LIB, settings.mesaLib, '/boot/home/summit-mesa/prefix/lib'].filter(Boolean);
   const mesa = mesaCandidates.find((candidate) => fs.existsSync(candidate)) || null;
   return { host, bundle, mesa };
+}
+
+function engineLibraries(bundle) {
+  return fs.existsSync(path.join(bundle, 'libWebKit.so.1')) ? bundle : path.join(bundle, 'lib');
 }
 
 class Host extends EventEmitter {
@@ -105,7 +111,7 @@ class Host extends EventEmitter {
     const env = { ...process.env, ...(this.options.env || {}), AURORA_HOST_CHILD: '1' };
     if (bundle) {
       env.WEBKIT_EXEC_PATH = bundle;
-      const libraries = [mesa, path.join(bundle, 'lib'), env.LIBRARY_PATH || '/boot/system/lib'].filter(Boolean);
+      const libraries = [mesa, engineLibraries(bundle), env.LIBRARY_PATH || '/boot/system/lib'].filter(Boolean);
       env.LIBRARY_PATH = libraries.join(':');
     }
     const args = this.options.signature ? ['--signature', this.options.signature] : [];
@@ -219,4 +225,4 @@ class Host extends EventEmitter {
   }
 }
 
-module.exports = { Host, locate };
+module.exports = { Host, locate, engineLibraries };

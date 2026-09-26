@@ -282,6 +282,11 @@ function start() {
 
   for (const signal of ['SIGINT', 'SIGTERM'])
     process.on(signal, () => electronApp.quit());
+  // Electron's main process reports rejections nobody handled and carries on;
+  // plain Node.js would end the app.
+  process.on('unhandledRejection', (reason) => {
+    process.stderr.write(`aurora: unhandled promise rejection: ${reason && reason.stack || reason}\n`);
+  });
   if (process.env.AURORA_REPL)
     startRepl(process.env.AURORA_REPL, electron);
 

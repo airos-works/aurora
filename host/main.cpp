@@ -9,12 +9,33 @@
 #include "Launcher.h"
 #include "Protocol.h"
 
+#include <AppFileInfo.h>
+#include <File.h>
+#include <OS.h>
+#include <image.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
 
 namespace {
+
+std::string OwnSignature()
+{
+    image_info info;
+    int32 cookie = 0;
+    while (get_next_image_info(B_CURRENT_TEAM, &cookie, &info) == B_OK) {
+        if (info.type != B_APP_IMAGE)
+            continue;
+        BFile file(info.name, B_READ_ONLY);
+        BAppFileInfo appInfo(&file);
+        char signature[B_MIME_TYPE_LENGTH];
+        if (appInfo.InitCheck() == B_OK && appInfo.GetSignature(signature) == B_OK)
+            return signature;
+        break;
+    }
+    return "application/x-vnd.aurora-app";
+}
 
 // aurora-host --dialog open|save|message <options>: one dialog, for Electron's
 // synchronous dialog functions (runtime/lib/electron/dialog.js). Prints one
@@ -62,7 +83,8 @@ int main(int argc, char** argv)
         std::fflush(nullptr);
         std::_Exit(0);
     }
-    std::string signature = "application/x-vnd.aurora-app";
+    // A packaged app's launcher carries its own signature in its resources.
+    std::string signature = OwnSignature();
     for (int index = 1; index + 1 < argc; index++) {
         if (!strcmp(argv[index], "--signature"))
             signature = argv[index + 1];

@@ -41,7 +41,6 @@ requires {
 	lib:libssl
 	lib:libcrypto
 	lib:libffi
-	lib:libsodium
 	lib:libzstd
 	lib:libbrotlienc
 }

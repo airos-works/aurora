@@ -61,11 +61,16 @@ void SetEngineExecutablePath()
     std::string library = ImagePath("libWebKit.so", B_LIBRARY_IMAGE);
     if (library.empty())
         return;
-    // <bundle>/lib/libWebKit.so.1 -> <bundle>, which holds WebProcess.
-    std::string bundle = library.substr(0, library.rfind('/'));
-    bundle = bundle.substr(0, bundle.rfind('/'));
-    if (access((bundle + "/WebProcess").c_str(), X_OK) == 0)
-        setenv("WEBKIT_EXEC_PATH", bundle.c_str(), 1);
+    // The shared engine install keeps WebProcess beside libWebKit; a Summit
+    // bundle keeps it one level up (<bundle>/lib/libWebKit.so.1).
+    std::string directory = library.substr(0, library.rfind('/'));
+    std::string parent = directory.substr(0, directory.rfind('/'));
+    for (const std::string& candidate : { directory, parent }) {
+        if (access((candidate + "/WebProcess").c_str(), X_OK) == 0) {
+            setenv("WEBKIT_EXEC_PATH", candidate.c_str(), 1);
+            return;
+        }
+    }
 }
 
 } // namespace aurora

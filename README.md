@@ -37,8 +37,9 @@ aurora --dev path/to/app      # app.isPackaged is false
 
 `electron` is the same command, so `npm start` scripts that run `electron .`
 work. The engine comes from `AURORA_WEBKIT_BUNDLE`, from
-`~/config/settings/Aurora/settings.json` (`{"webkitBundle": ...}`), or from a
-Summit engine install.
+`~/config/settings/Aurora/settings.json` (`{"webkitBundle": ...}`), or from the
+shared engine install: `/boot/system/lib/summit-webkit` (a future package) or
+`~/config/non-packaged/lib/summit-webkit`.
 
 An app packaged for Haiku is a folder containing a copy of `aurora-host`
 named after the app, with the app's icon and signature, plus `aurora.json`

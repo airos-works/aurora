@@ -19,6 +19,8 @@ DEFAULT_BINARY_PATHS = {
 
 # Keep the server's data with the app's other settings, not in ~/.pgadmin.
 DATA_DIR = os.path.realpath(os.path.expanduser('~/config/settings/pgadmin4/server'))
+# pgAdmin creates DATA_DIR itself, but not its parent.
+os.makedirs(os.path.dirname(DATA_DIR), exist_ok=True)
 
 # Updates come from the Haiku package, not from pgadmin.org.
 UPGRADE_CHECK_ENABLED = False

@@ -15,11 +15,11 @@ function splitArguments(windowOrOptions, maybeOptions) {
 }
 
 function syncDialog(kind, options) {
-  const { locate } = require('../host');
+  const { locate, engineLibraries } = require('../host');
   const { host, bundle } = locate();
   const env = { ...process.env };
   if (bundle)
-    env.LIBRARY_PATH = [`${bundle}/lib`, env.LIBRARY_PATH || '/boot/system/lib'].join(':');
+    env.LIBRARY_PATH = [engineLibraries(bundle), env.LIBRARY_PATH || '/boot/system/lib'].join(':');
   const result = spawnSync(host, ['--dialog', kind, JSON.stringify(options)], { env, encoding: 'utf8', maxBuffer: 16 << 20 });
   const line = (result.stdout || '').split('\n').find((text) => text.startsWith('\x1e'));
   if (!line)

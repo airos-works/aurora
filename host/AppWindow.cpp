@@ -148,11 +148,16 @@ AppWindow::AppWindow(int32 identifier, const json& options, std::shared_ptr<BWeb
     }
     fMenuBarVisible = !BoolOf(options, "autoHideMenuBar", false);
 
+    // The requested bounds include the border and tab: fit the content inside.
+    BRect initial = Frame();
+    SetOuterBounds(initial.left, initial.top, initial.Width() + 1, initial.Height() + 1);
+    BRect insets = DecoratorInsets();
+    float horizontal = insets.left + insets.right, vertical = insets.top + insets.bottom;
     float minWidth = NumberOf(options, "minWidth", 0), minHeight = NumberOf(options, "minHeight", 0);
     float maxWidth = NumberOf(options, "maxWidth", 0), maxHeight = NumberOf(options, "maxHeight", 0);
     if (minWidth || minHeight || maxWidth || maxHeight)
-        SetSizeLimits(std::max(0.0f, minWidth - 1), maxWidth > 0 ? maxWidth - 1 : 32768,
-            std::max(0.0f, minHeight - 1), maxHeight > 0 ? maxHeight - 1 : 32768);
+        SetSizeLimits(std::max(0.0f, minWidth - horizontal - 1), maxWidth > 0 ? maxWidth - horizontal - 1 : 32768,
+            std::max(0.0f, minHeight - vertical - 1), maxHeight > 0 ? maxHeight - vertical - 1 : 32768);
 
     auto* background = new BView(Bounds(), "background", B_FOLLOW_ALL, B_WILL_DRAW);
     background->SetViewColor(ParseColor(StringOf(options, "backgroundColor"), ui_color(B_PANEL_BACKGROUND_COLOR)));
@@ -279,9 +284,30 @@ void AppWindow::PostApplicationMenu(BWindow* window, const json& items)
     }
 }
 
+BRect AppWindow::DecoratorInsets() const
+{
+    BRect frame = Frame();
+    BRect outer = DecoratorFrame();
+    if (Look() == B_NO_BORDER_WINDOW_LOOK || !outer.IsValid() || !outer.Contains(frame))
+        return BRect(0, 0, 0, 0);
+    return BRect(frame.left - outer.left, frame.top - outer.top, outer.right - frame.right, outer.bottom - frame.bottom);
+}
+
+void AppWindow::SetOuterBounds(float x, float y, float width, float height)
+{
+    BRect insets = DecoratorInsets();
+    MoveTo(std::floor(x + insets.left), std::floor(y + insets.top));
+    ResizeTo(std::max(1.0f, width - insets.left - insets.right) - 1, std::max(1.0f, height - insets.top - insets.bottom) - 1);
+}
+
 json AppWindow::WindowBounds() const
 {
     BRect frame = Frame();
+    BRect insets = DecoratorInsets();
+    frame.left -= insets.left;
+    frame.top -= insets.top;
+    frame.right += insets.right;
+    frame.bottom += insets.bottom;
     return { { "x", frame.left }, { "y", frame.top }, { "width", frame.Width() + 1 }, { "height", frame.Height() + 1 } };
 }
 
@@ -571,16 +597,16 @@ void AppWindow::HandleCommand(const json& command)
     } else if (name == "window.setTitle") {
         SetTitle(StringOf(command, "title").c_str());
     } else if (name == "window.setBounds") {
-        BRect frame = Frame();
-        float x = NumberOf(command, "x", frame.left), y = NumberOf(command, "y", frame.top);
-        float width = NumberOf(command, "width", frame.Width() + 1), height = NumberOf(command, "height", frame.Height() + 1);
-        MoveTo(std::floor(x), std::floor(y));
-        ResizeTo(std::max(1.0f, width) - 1, std::max(1.0f, height) - 1);
+        json current = WindowBounds();
+        SetOuterBounds(NumberOf(command, "x", current["x"].get<double>()), NumberOf(command, "y", current["y"].get<double>()),
+            NumberOf(command, "width", current["width"].get<double>()), NumberOf(command, "height", current["height"].get<double>()));
     } else if (name == "window.center") {
         CenterOnScreen();
     } else if (name == "window.setSizeLimits") {
-        SetSizeLimits(std::max(0.0, NumberOf(command, "minWidth", 1) - 1), std::max(0.0, NumberOf(command, "maxWidth", 32769) - 1),
-            std::max(0.0, NumberOf(command, "minHeight", 1) - 1), std::max(0.0, NumberOf(command, "maxHeight", 32769) - 1));
+        BRect insets = DecoratorInsets();
+        double horizontal = insets.left + insets.right, vertical = insets.top + insets.bottom;
+        SetSizeLimits(std::max(0.0, NumberOf(command, "minWidth", 1) - horizontal - 1), std::max(0.0, NumberOf(command, "maxWidth", 32769) - horizontal - 1),
+            std::max(0.0, NumberOf(command, "minHeight", 1) - vertical - 1), std::max(0.0, NumberOf(command, "maxHeight", 32769) - vertical - 1));
     } else if (name == "window.setResizable") {
         uint32 flags = Flags() & ~(B_NOT_RESIZABLE | B_NOT_ZOOMABLE);
         SetFlags(BoolOf(command, "flag", true) ? flags : flags | B_NOT_RESIZABLE | B_NOT_ZOOMABLE);
