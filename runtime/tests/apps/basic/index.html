@@ -1,0 +1,22 @@
+<!doctype html>
+<title>Basic Test</title>
+<script>
+(async () => {
+  const report = { hasApi: typeof window.api === 'object' };
+  const pong = await window.api.ping('x');
+  report.pong = pong.pong;
+  report.date = pong.when instanceof Date;
+  report.bytes = pong.bytes instanceof Uint8Array && pong.bytes.length === 3;
+  try {
+    await window.api.fail();
+    report.fail = false;
+  } catch (error) {
+    report.fail = /nope/.test(error.message);
+  }
+  window.api.onMessage((...args) => {
+    report.message = args;
+    window.api.report(report);
+  });
+  window.api.ready();
+})();
+</script>

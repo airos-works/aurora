@@ -1,0 +1,12 @@
+--- a/Source/WebKit/UIProcess/haiku/OpenPanelHaiku.cpp
++++ b/Source/WebKit/UIProcess/haiku/OpenPanelHaiku.cpp
+@@ -15,7 +15,8 @@
+ #include <Messenger.h>
+ #include <Path.h>
+ #include <memory>
+-#include <sys/stat.h>
++// struct stat_beos, which BRefFilter::Filter() receives.
++#include <compat/sys/stat.h>
+ #include <wtf/RunLoop.h>
+ 
+ namespace WebKit {

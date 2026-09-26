@@ -1,0 +1,147 @@
+--- a/Source/WebKit/UIProcess/API/haiku/WebKitEmbedding.h
++++ b/Source/WebKit/UIProcess/API/haiku/WebKitEmbedding.h
+@@ -38,7 +38,22 @@
+     B_WEBKIT_URL_SCHEME_REQUEST = 'wusr',
+     // The engine no longer wants the answer to a request, which was for
+     // example cancelled by navigation. Fields: "view", "identifier".
+-    B_WEBKIT_URL_SCHEME_REQUEST_STOPPED = 'wuss'
++    B_WEBKIT_URL_SCHEME_REQUEST_STOPPED = 'wuss',
++    // A beforeunload handler kept the page, and the view's behavior is
++    // B_WEBKIT_BEFORE_UNLOAD_CANCEL, so no question was asked. Fields: "view".
++    B_WEBKIT_BEFORE_UNLOAD_PREVENTED = 'wbup'
++};
++
++// SetBeforeUnloadBehavior(): what happens when a page's beforeunload handler
++// asks to stay, on close, reload or navigation.
++enum : uint32 {
++    // Ask the user, as a browser does (the default).
++    B_WEBKIT_BEFORE_UNLOAD_PROMPT = 0,
++    // Stay without asking and send B_WEBKIT_BEFORE_UNLOAD_PREVENTED, as
++    // Electron does; the host may then close or reload regardless.
++    B_WEBKIT_BEFORE_UNLOAD_CANCEL = 1,
++    // Leave without asking: the handlers' answer is ignored.
++    B_WEBKIT_BEFORE_UNLOAD_PROCEED = 2
+ };
+ 
+ // Flags of SetURLSchemeHandler(): how pages of the scheme are treated.
+--- a/Source/WebKit/UIProcess/API/haiku/WebKitView.h
++++ b/Source/WebKit/UIProcess/API/haiku/WebKitView.h
+@@ -143,6 +143,11 @@
+     static void RespondToURLSchemeRequest(uint64 identifier, int32 status, const char* mimeType,
+         const BMessage* headers, const void* data, size_t size);
+     static void FailURLSchemeRequest(uint64 identifier, const char* description = nullptr);
++    // How a beforeunload handler that asks to stay is answered; notifications
++    // (B_WEBKIT_BEFORE_UNLOAD_PREVENTED) go to target.
++    void SetBeforeUnloadBehavior(uint32 behavior, BMessenger target = BMessenger());
++    // Page zoom as a factor (1 is 100%), as Electron's setZoomFactor.
++    void SetZoomFactor(double factor);
+ 
+     void AttachedToWindow() override;
+     void DetachedFromWindow() override;
+--- a/Source/WebKit/UIProcess/API/haiku/WebKitViewEmbedding.cpp
++++ b/Source/WebKit/UIProcess/API/haiku/WebKitViewEmbedding.cpp
+@@ -24,6 +24,7 @@
+ #include "WebURLSchemeHandler.h"
+ #include "WebURLSchemeTask.h"
+ #include "WebUserContentControllerProxy.h"
++#include "EmbeddingHaiku.h"
+ #include "WebViewPrivate.h"
+ #include "WebViewStateHaiku.h"
+ #include <Message.h>
+@@ -269,8 +270,55 @@
+     const BMessenger m_target;
+ };
+ 
++struct BeforeUnloadBehaviorHaiku {
++    uint32 behavior { B_WEBKIT_BEFORE_UNLOAD_PROMPT };
++    BMessenger target;
++};
++
++// By page, which outlives no identifier: identifiers are never reused. Main thread only.
++HashMap<WebPageProxyIdentifier, BeforeUnloadBehaviorHaiku>& beforeUnloadBehaviorsHaiku()
++{
++    static NeverDestroyed<HashMap<WebPageProxyIdentifier, BeforeUnloadBehaviorHaiku>> behaviors;
++    return behaviors.get();
++}
++
+ } // namespace
+ 
++bool WebKit::answerBeforeUnloadHaiku(WebPageProxy& page, Function<void(bool)>& completion)
++{
++    auto found = beforeUnloadBehaviorsHaiku().find(page.identifier());
++    if (found == beforeUnloadBehaviorsHaiku().end() || found->value.behavior == B_WEBKIT_BEFORE_UNLOAD_PROMPT)
++        return false;
++    bool leave = found->value.behavior == B_WEBKIT_BEFORE_UNLOAD_PROCEED;
++    if (!leave) {
++        BMessage message(B_WEBKIT_BEFORE_UNLOAD_PREVENTED);
++        message.AddMessenger("view", viewOfPageHaiku(page));
++        found->value.target.SendMessage(&message, static_cast<BHandler*>(nullptr), 0);
++    }
++    completion(leave);
++    return true;
++}
++
++void BWebKitView::SetBeforeUnloadBehavior(uint32 behavior, BMessenger target)
++{
++    if (m_status != B_OK)
++        return;
++    WTF::RunLoop::mainSingleton().dispatch([state = m_state, behavior, target] {
++        if (auto* page = pageHaiku(state))
++            beforeUnloadBehaviorsHaiku().set(page->identifier(), BeforeUnloadBehaviorHaiku { behavior, target });
++    });
++}
++
++void BWebKitView::SetZoomFactor(double factor)
++{
++    if (m_status != B_OK || !std::isfinite(factor) || factor <= 0)
++        return;
++    WTF::RunLoop::mainSingleton().dispatch([state = m_state, factor] {
++        if (auto* page = pageHaiku(state))
++            page->setPageZoomFactor(factor);
++    });
++}
++
+ void BWebKitView::AddUserScript(const char* source, bool atDocumentStart, bool allFrames)
+ {
+     if (m_status != B_OK || !source)
+--- a/Source/WebKit/UIProcess/haiku/WebView.cpp
++++ b/Source/WebKit/UIProcess/haiku/WebView.cpp
+@@ -50,6 +50,7 @@
+ #include "NativeWebKeyboardEvent.h"
+ #include "NativeWebMouseEvent.h"
+ #include "NativeWebWheelEvent.h"
++#include "EmbeddingHaiku.h"
+ #include "OpenPanelHaiku.h"
+ #include "PageLoadState.h"
+ #include "WKAPICast.h"
+@@ -772,8 +773,11 @@
+ 
+     bool canRunBeforeUnloadConfirmPanel() const override { return true; }
+ 
+-    void runBeforeUnloadConfirmPanel(WebPageProxy&, String&& message, WebFrameProxy*, FrameInfoData&& frame, Function<void(bool)>&& completion) override
++    void runBeforeUnloadConfirmPanel(WebPageProxy& page, String&& message, WebFrameProxy*, FrameInfoData&& frame, Function<void(bool)>&& completion) override
+     {
++        // Hosts such as Electron's runtime can answer without asking.
++        if (answerBeforeUnloadHaiku(page, completion))
++            return;
+         show(JavaScriptDialogKindHaiku::BeforeUnload, message, { }, frame, dialogCompletionOnMainHaiku(
+             [completion = WTF::move(completion)](bool accepted, const std::string&) { completion(accepted); }));
+     }
+--- /dev/null
++++ b/Source/WebKit/UIProcess/haiku/EmbeddingHaiku.h
+@@ -0,0 +1,15 @@
++/* Copyright (C) 2026 KunanyiOS contributors. SPDX-License-Identifier: BSD-2-Clause */
++
++#pragma once
++
++#include <wtf/Function.h>
++
++namespace WebKit {
++
++class WebPageProxy;
++
++// Answers a beforeunload panel by the view's SetBeforeUnloadBehavior(), and
++// returns true, unless the view asks the user (returns false). Main thread.
++bool answerBeforeUnloadHaiku(WebPageProxy&, Function<void(bool)>& completion);
++
++} // namespace WebKit

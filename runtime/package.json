@@ -1,0 +1,17 @@
+{
+  "name": "aurora",
+  "version": "0.1.0",
+  "description": "Electron-compatible app runtime for Haiku, built on the system WebKit engine",
+  "license": "MIT",
+  "main": "lib/main.js",
+  "bin": {
+    "aurora": "bin/aurora",
+    "electron": "bin/aurora"
+  },
+  "engines": {
+    "node": ">=20.6"
+  },
+  "scripts": {
+    "test": "node --test tests/"
+  }
+}

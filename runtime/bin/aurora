@@ -1,0 +1,5 @@
+#!/bin/sh
+# aurora: run an Electron app on Haiku. See lib/main.js.
+AURORA_ROOT=$(CDPATH= cd -- "$(dirname -- "$(readlink -f -- "$0" 2>/dev/null || echo "$0")")/.." && pwd)
+NODE=${AURORA_NODE:-node}
+exec "$NODE" "$AURORA_ROOT/lib/main.js" "$@"
