@@ -87,9 +87,9 @@ bool HasProperty(const json& options, const char* property)
         [property](const json& value) { return value.is_string() && value.get<std::string>() == property; });
 }
 
-void ApplyCommonOptions(BFilePanel* panel, const json& options, bool save)
+void ApplyCommonOptions(BFilePanel* panel, const json& options, bool save, const std::string& application)
 {
-    std::string title = StringOf(options, "title");
+    std::string title = StringOf(options, "title", application + (save ? ": Save" : ": Open"));
     if (!title.empty() && panel->Window()->Lock()) {
         panel->Window()->SetTitle(title.c_str());
         panel->Window()->Unlock();
@@ -226,6 +226,14 @@ DialogLooper::~DialogLooper()
     }
 }
 
+void DialogLooper::SetApplicationName(const std::string& name)
+{
+    if (Lock()) {
+        fApplicationName = name;
+        Unlock();
+    }
+}
+
 void DialogLooper::Answer(uint64 request, const json& result)
 {
     SendResponse(request, result);
@@ -246,7 +254,7 @@ void DialogLooper::ShowOpenPanel(uint64 request, const json& options)
     entry.panel = new BFilePanel(B_OPEN_PANEL, &target, nullptr, flavors, HasProperty(options, "multiSelections"),
         message, entry.filter, true, true);
     delete message;
-    ApplyCommonOptions(entry.panel, options, false);
+    ApplyCommonOptions(entry.panel, options, false, fApplicationName);
     fPanels[request] = entry;
     entry.panel->Show();
     Unlock();
@@ -263,7 +271,7 @@ void DialogLooper::ShowSavePanel(uint64 request, const json& options)
     entry.filter = FilterFor(options);
     entry.panel = new BFilePanel(B_SAVE_PANEL, &target, nullptr, B_FILE_NODE, false, message, entry.filter, true, true);
     delete message;
-    ApplyCommonOptions(entry.panel, options, true);
+    ApplyCommonOptions(entry.panel, options, true, fApplicationName);
     fPanels[request] = entry;
     entry.panel->Show();
     Unlock();
@@ -295,6 +303,9 @@ void DialogLooper::ShowMessageBox(uint64 request, const json& options)
     int32 cancel = static_cast<int32>(NumberOf(options, "cancelId", -1));
     if (cancel >= 0 && cancel < static_cast<int32>(buttons.size()))
         alert->SetShortcut(cancel, B_ESCAPE);
+    int32 defaultButton = static_cast<int32>(NumberOf(options, "defaultId", 0));
+    if (defaultButton >= 0 && defaultButton < static_cast<int32>(buttons.size()))
+        alert->SetDefaultButton(alert->ButtonAt(defaultButton));
     auto* message = new BMessage(kAlertResult);
     message->AddUInt64("request", request);
     alert->Go(new BInvoker(message, BMessenger(this)));

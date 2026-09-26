@@ -163,6 +163,40 @@ function setDefaultApplicationMenu() {
   ]));
 }
 
+// A development aid: AURORA_REPL=/path/to/socket evaluates each line sent to
+// that UNIX socket as an async expression, with `electron` in scope, and
+// answers one JSON line. tools/aurora-repl.js is a client.
+function startRepl(socketPath, electron) {
+  const net = require('net');
+  const util = require('util');
+  try {
+    fs.unlinkSync(socketPath);
+  } catch {}
+  const server = net.createServer((connection) => {
+    let buffer = '';
+    connection.setEncoding('utf8');
+    connection.on('data', async (chunk) => {
+      buffer += chunk;
+      let newline;
+      while ((newline = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, newline);
+        buffer = buffer.slice(newline + 1);
+        let answer;
+        try {
+          const evaluate = new Function('electron', 'require', `return (async () => (${line}))();`);
+          const value = await evaluate(electron, require);
+          answer = { ok: true, value: util.inspect(value, { depth: 4, breakLength: 160 }) };
+        } catch (error) {
+          answer = { ok: false, error: String(error && error.stack || error) };
+        }
+        connection.write(`${JSON.stringify(answer)}\n`);
+      }
+    });
+  });
+  server.listen(socketPath);
+  server.unref();
+}
+
 function start() {
   const options = parseArguments(process.argv.slice(2));
   let app;
@@ -209,8 +243,10 @@ function start() {
     electronApp.setPath('userData', path.resolve(options.userDataDir));
   trackChildren();
 
-  const signatureName = (state.appInfo.productName || state.appInfo.name).toLowerCase().replace(/[^a-z0-9.-]+/g, '-');
-  const host = new Host({ signature: `application/x-vnd.aurora-${signatureName}` });
+  // A packaged app's host is its own executable with its own signature (see
+  // docs/PACKAGING.md); otherwise the host keeps the one in its resources.
+  const auroraOptions = app.manifest.aurora || {};
+  const host = new Host({ signature: process.env.AURORA_SIGNATURE || auroraOptions.signature });
   state.host = host;
   attachHost(host);
   host.once('ready', async (info) => {
@@ -246,6 +282,8 @@ function start() {
 
   for (const signal of ['SIGINT', 'SIGTERM'])
     process.on(signal, () => electronApp.quit());
+  if (process.env.AURORA_REPL)
+    startRepl(process.env.AURORA_REPL, electron);
 
   const isModule = app.main.endsWith('.mjs') || (app.manifest.type === 'module' && !app.main.endsWith('.cjs'));
   if (isModule) {

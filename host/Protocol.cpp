@@ -51,11 +51,16 @@ void InitProtocolOutput()
 
 void SendResponse(uint64 request, const json& result)
 {
+    // Commands sent without a request number want no answer.
+    if (!request)
+        return;
     SendEvent({ { "ev", "response" }, { "req", request }, { "result", result } });
 }
 
 void SendError(uint64 request, const std::string& error)
 {
+    if (!request)
+        return;
     SendEvent({ { "ev", "response" }, { "req", request }, { "error", error } });
 }
 

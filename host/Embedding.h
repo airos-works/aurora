@@ -12,3 +12,10 @@
 #else
 #define AURORA_HAVE_EMBEDDING 0
 #endif
+
+// AURORA_LEGACY_ENGINE=1 builds against an engine from before September 21
+// (no new-page requests, context menus, link hover or display scale), to try
+// the host with an older Summit bundle.
+#ifndef AURORA_LEGACY_ENGINE
+#define AURORA_LEGACY_ENGINE 0
+#endif

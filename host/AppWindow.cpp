@@ -13,6 +13,7 @@
 #include <WebKit/WebKitContext.h>
 #include <WebKit/WebKitView.h>
 #include <cmath>
+#include <functional>
 #include <cstring>
 #include <vector>
 
@@ -158,12 +159,12 @@ AppWindow::AppWindow(int32 identifier, const json& options, std::shared_ptr<BWeb
     AddChild(background);
 
     SetMenu(fHasOwnMenu ? &fOwnMenu : &fApplicationMenu);
-    BRect viewFrame = Bounds();
-    if (fMenuBar && !fMenuBar->IsHidden())
-        viewFrame.top = fMenuBar->Frame().bottom + 1;
+    BRect viewFrame = background->Bounds();
+#if !AURORA_LEGACY_ENGINE
     if (newPageRequest)
         fView = new BWebKitView(viewFrame, "web contents", BMessenger(this), newPageRequest, B_FOLLOW_ALL, fContext);
     else
+#endif
         fView = new BWebKitView(viewFrame, "web contents", BMessenger(this), B_FOLLOW_ALL, fContext);
     ConfigureView(options);
     background->AddChild(fView);
@@ -240,8 +241,7 @@ void AppWindow::SetMenu(const json* items)
         fMenuBar = nullptr;
     }
     if (items && items->is_array() && !items->empty()) {
-        fMenuBar = BuildMenuBar(*items, fIdentifier);
-        fMenuBar->SetResizingMode(B_FOLLOW_LEFT_RIGHT | B_FOLLOW_TOP);
+        fMenuBar = BuildMenuBar(*items, fIdentifier, Bounds().Width());
         AddChild(fMenuBar);
         if (!fMenuBarVisible)
             fMenuBar->Hide();
@@ -255,7 +255,7 @@ void AppWindow::LayoutViews()
     if (!background)
         return;
     BRect frame = Bounds();
-    if (fMenuBar && !fMenuBar->IsHidden() && !fFullScreen) {
+    if (fMenuBar && !fMenuBar->IsHidden(fMenuBar) && !fFullScreen) {
         fMenuBar->ResizeToPreferred();
         fMenuBar->ResizeTo(Bounds().Width(), fMenuBar->Frame().Height());
         frame.top = fMenuBar->Frame().bottom + 1;
@@ -359,9 +359,9 @@ void AppWindow::SetFullScreen(bool fullScreen)
         MoveTo(fFrameBeforeFullScreen.LeftTop());
         ResizeTo(fFrameBeforeFullScreen.Width(), fFrameBeforeFullScreen.Height());
     }
-    if (fMenuBar && fullScreen && !fMenuBar->IsHidden())
+    if (fMenuBar && fullScreen && !fMenuBar->IsHidden(fMenuBar))
         fMenuBar->Hide();
-    else if (fMenuBar && !fullScreen && fMenuBarVisible && fMenuBar->IsHidden())
+    else if (fMenuBar && !fullScreen && fMenuBarVisible && fMenuBar->IsHidden(fMenuBar))
         fMenuBar->Show();
     LayoutViews();
     SendWindowEvent(fullScreen ? "enter-full-screen" : "leave-full-screen");
@@ -593,7 +593,7 @@ void AppWindow::HandleCommand(const json& command)
         SetMenu(&fOwnMenu);
     } else if (name == "window.setMenuBarVisibility") {
         fMenuBarVisible = BoolOf(command, "visible", true);
-        if (fMenuBar && fMenuBarVisible == fMenuBar->IsHidden()) {
+        if (fMenuBar && fMenuBarVisible == fMenuBar->IsHidden(fMenuBar)) {
             fMenuBarVisible ? fMenuBar->Show() : fMenuBar->Hide();
             LayoutViews();
         }
@@ -601,6 +601,23 @@ void AppWindow::HandleCommand(const json& command)
         BeginClose();
     } else if (name == "window.destroy") {
         Destroy();
+        return;
+    } else if (name == "window.debugViews") {
+        // The view tree with frames, for diagnosing layout.
+        std::function<json(BView*)> describe = [&](BView* view) {
+            BRect frame = view->Frame();
+            json node = { { "name", view->Name() ? view->Name() : "" }, { "hidden", view->IsHidden() },
+                { "frame", { frame.left, frame.top, frame.right, frame.bottom } } };
+            json children = json::array();
+            for (BView* child = view->ChildAt(0); child; child = child->NextSibling())
+                children.push_back(describe(child));
+            node["children"] = children;
+            return node;
+        };
+        json roots = json::array();
+        for (int32 index = 0; BView* view = ChildAt(index); index++)
+            roots.push_back(describe(view));
+        SendResponse(request, roots);
         return;
     } else if (name == "window.getBounds") {
         // Answered below.
@@ -663,7 +680,8 @@ void AppWindow::HandleWebContentsCommand(const std::string& name, const json& co
 #if AURORA_HAVE_EMBEDDING
         fView->EvaluateJavaScript(StringOf(command, "code").c_str(), BMessenger(this), request, BoolOf(command, "async", false));
 #else
-        SendError(request, "This WebKit build cannot run scripts for the runtime");
+        SendEvent({ { "ev", "js.result" }, { "id", fIdentifier }, { "req", request },
+            { "error", "This WebKit build cannot run scripts for the runtime" } });
 #endif
         return;
     } else if (name == "wc.setUserAgent") {
@@ -719,6 +737,7 @@ void AppWindow::MessageReceived(BMessage* message)
     case B_WEBKIT_CLOSE_COMMITTED:
         WebKitCloseCommitted(message);
         return;
+#if !AURORA_LEGACY_ENGINE
     case B_WEBKIT_NEW_PAGE_REQUESTED: {
         json event = {
             { "ev", "wc.new-page" }, { "id", fIdentifier },
@@ -762,6 +781,7 @@ void AppWindow::MessageReceived(BMessage* message)
         SendEvent(params);
         return;
     }
+#endif
 #if AURORA_HAVE_EMBEDDING
     case B_WEBKIT_SCRIPT_MESSAGE: {
         // Pages opened by window.open() share this window's handler: messages

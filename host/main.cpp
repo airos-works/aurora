@@ -7,6 +7,7 @@
 #include "Protocol.h"
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 
@@ -24,5 +25,9 @@ int main(int argc, char** argv)
         return 1;
     }
     application.Run();
-    return 0;
+    // WebKit's worker threads may still be running their thread-local
+    // destructors, which touch libbe's handler tokens; returning from main
+    // would destroy those under them. Summit leaves the same way.
+    std::fflush(nullptr);
+    std::_Exit(0);
 }

@@ -6,6 +6,7 @@
 
 #include <Looper.h>
 #include <map>
+#include <string>
 
 class BFilePanel;
 class BRefFilter;
@@ -24,6 +25,8 @@ public:
     void ShowSavePanel(uint64 request, const json& options);
     void ShowMessageBox(uint64 request, const json& options);
     void ShowErrorBox(const json& options);
+    // Named in panel titles ("pgAdmin 4: Open").
+    void SetApplicationName(const std::string& name);
 
     void MessageReceived(BMessage*) override;
 
@@ -36,6 +39,7 @@ private:
     void Answer(uint64 request, const json& result);
     void FinishPanel(uint64 request);
     std::map<uint64, Panel> fPanels;
+    std::string fApplicationName = "Aurora";
 };
 
 } // namespace aurora

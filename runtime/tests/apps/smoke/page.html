@@ -1,0 +1,24 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Aurora Smoke</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2em; background: #f4f1ea; color: #222; }
+  h1 { color: #2b6cb0; }
+  .card { background: white; border-radius: 8px; padding: 1em 1.5em; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
+  code { background: #eee; padding: 0 .3em; border-radius: 3px; }
+</style>
+</head>
+<body>
+  <h1>Aurora is running</h1>
+  <div class="card">
+    <p>This page is drawn by the system WebKit engine inside a native Haiku window.</p>
+    <p>User agent: <code id="ua"></code></p>
+    <p><input id="text" placeholder="Type here" size="30"> <button onclick="document.getElementById('echo').textContent = document.getElementById('text').value">Echo</button></p>
+    <p id="echo"></p>
+    <p><input type="file" id="file"></p>
+  </div>
+  <script>document.getElementById('ua').textContent = navigator.userAgent;</script>
+</body>
+</html>

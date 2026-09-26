@@ -18,7 +18,7 @@ namespace aurora {
 
 // Fills menu with items; replaces nothing that is already there.
 void AddMenuItems(BMenu* menu, const json& items, int32 windowIdentifier);
-BMenuBar* BuildMenuBar(const json& items, int32 windowIdentifier);
+BMenuBar* BuildMenuBar(const json& items, int32 windowIdentifier, float width);
 // Marks a radio item and clears the others of its contiguous group.
 void MarkRadioItem(BMenu* menu, const char* itemIdentifier);
 

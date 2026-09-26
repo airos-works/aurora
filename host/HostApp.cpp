@@ -72,6 +72,15 @@ void TargetItems(BMenu* menu, BMessenger target, uint64 request)
     }
 }
 
+float DisplayScale()
+{
+#if AURORA_LEGACY_ENGINE
+    return 1;
+#else
+    return BWebKitDisplayScale();
+#endif
+}
+
 std::string DirectoryPath(directory_which which)
 {
     BPath path;
@@ -109,7 +118,7 @@ json HostApp::Screens()
         }
     }
     return json::array({ { { "id", 0 }, { "bounds", bounds }, { "workArea", workArea },
-        { "scaleFactor", BWebKitDisplayScale() }, { "rotation", 0 }, { "internal", false } } });
+        { "scaleFactor", DisplayScale() }, { "rotation", 0 }, { "internal", false } } });
 }
 
 bool HostApp::DarkMode()
@@ -295,6 +304,8 @@ void HostApp::HandleCommand(json& command)
     } else if (name == "init") {
         fUserDataPath = StringOf(command, "userDataPath");
         fApplicationName = StringOf(command, "name");
+        if (!fApplicationName.empty())
+            fDialogs->SetApplicationName(fApplicationName);
         std::string downloads = StringOf(command, "downloadsPath");
         if (!downloads.empty())
             fDownloadsPath = downloads;
@@ -362,8 +373,10 @@ void HostApp::HandleCommand(json& command)
     } else if (name == "scheme.fail") {
         BWebKitView::FailURLSchemeRequest(static_cast<uint64>(NumberOf(command, "identifier")), StringOf(command, "description").c_str());
 #endif
+#if !AURORA_LEGACY_ENGINE
     } else if (name == "newpage.decline") {
         BWebKitView::DeclineNewPage(static_cast<uint64>(NumberOf(command, "identifier")));
+#endif
     } else if (name == "download.cancel") {
         for (auto& [partition, context] : fContexts)
             context->CancelDownload(static_cast<uint64>(NumberOf(command, "identifier")));

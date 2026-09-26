@@ -131,9 +131,11 @@ void AddMenuItems(BMenu* menu, const json& items, int32 windowIdentifier)
     }
 }
 
-BMenuBar* BuildMenuBar(const json& items, int32 windowIdentifier)
+BMenuBar* BuildMenuBar(const json& items, int32 windowIdentifier, float width)
 {
-    auto* bar = new BMenuBar("menu bar");
+    // The frame constructor sizes the bar's height to its font; the layout
+    // constructor would leave it empty in a window without a layout.
+    auto* bar = new BMenuBar(BRect(0, 0, width, 0), "menu bar");
     AddMenuItems(bar, items, windowIdentifier);
     return bar;
 }

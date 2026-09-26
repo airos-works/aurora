@@ -10,6 +10,12 @@ const fs = require('fs');
 const path = require('path');
 
 const RS = '\x1e';
+const TRACE = process.env.AURORA_TRACE === '1';
+
+function trace(direction, text) {
+  if (TRACE)
+    process.stderr.write(`[aurora ${direction}] ${text.length > 400 ? `${text.slice(0, 400)}…` : text}\n`);
+}
 
 function exists(file) {
   try {
@@ -76,7 +82,7 @@ class Host extends EventEmitter {
       const libraries = [mesa, path.join(bundle, 'lib'), env.LIBRARY_PATH || '/boot/system/lib'].filter(Boolean);
       env.LIBRARY_PATH = libraries.join(':');
     }
-    const args = ['--signature', this.options.signature || 'application/x-vnd.aurora-app'];
+    const args = this.options.signature ? ['--signature', this.options.signature] : [];
     this.child = spawn(this.options.command || host, [...(this.options.commandArgs || []), ...args], {
       stdio: ['pipe', 'pipe', 'inherit'],
       env,
@@ -111,6 +117,7 @@ class Host extends EventEmitter {
         continue;
       }
       let message;
+      trace('<', line.slice(start + 1));
       try {
         message = JSON.parse(line.slice(start + 1));
       } catch (error) {
@@ -163,6 +170,7 @@ class Host extends EventEmitter {
     if (this.exited || !this.child)
       return;
     const line = RS + JSON.stringify({ cmd: command, ...fields }) + '\n';
+    trace('>', line.slice(1, -1));
     this.child.stdin.write(line);
   }
 
