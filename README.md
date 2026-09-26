@@ -64,7 +64,10 @@ its Python server.
   - **System services:** `clipboard`, `shell`, `screen`, `nativeTheme`,
     `Notification`, `protocol.handle` and custom schemes, downloads,
     `safeStorage`, `net.fetch`, `utilityProcess`.
-- **Present but inert:** `session` cookies and `webRequest` hooks, `Tray`,
+  - **Sessions:** partitions, `session.cookies` (get, set and remove,
+    HttpOnly included) and `clearStorageData`/`clearCache`/`clearData`. An
+    origin limits clearing to that origin's cookies.
+- **Present but inert:** `webRequest` hooks, `Tray`,
   `globalShortcut`, `powerMonitor`, `autoUpdater` (packages update through
   pkgman), `crashReporter`, DevTools.
 - **Not available:** `BrowserView`/`WebContentsView`, `desktopCapturer`,
