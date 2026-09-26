@@ -28,6 +28,12 @@ find "$SITE/googleapiclient/discovery_cache/documents" -name '*.json' \
     ! -name 'cloudresourcemanager.*' ! -name 'compute.*' ! -name 'sqladmin.*' -delete
 find "$SITE/pgadmin4" -name '*.js.map' -delete
 find "$TARGET/venv" -name '*.so' -exec strip --strip-debug {} +
+# The launcher: strip drops its resources (signature, icon), so keep them.
+LAUNCHER="$TARGET/pgAdmin 4"
+xres -o "$STAGE/launcher.rsrc" "$LAUNCHER"
+strip --strip-debug "$LAUNCHER"
+xres -o "$LAUNCHER" "$STAGE/launcher.rsrc"
+mimeset -f "$LAUNCHER"
 # The package is read-only: compile once, and never check the sources again.
 "$TARGET/venv/bin/python3" -m compileall -q -j 0 --invalidation-mode unchecked-hash \
     -s "$STAGE" -p /boot/system "$SITE" > /dev/null

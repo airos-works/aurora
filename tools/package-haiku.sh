@@ -16,6 +16,10 @@ trap 'rm -rf "$STAGE"' EXIT
 mkdir -p "$STAGE/bin" "$STAGE/data/aurora/runtime" "$STAGE/documentation/packages/aurora"
 cp -r "$ROOT/runtime/lib" "$ROOT/runtime/package.json" "$ROOT/runtime/tools" "$STAGE/data/aurora/runtime/"
 cp "$BUILD/aurora-host" "$STAGE/data/aurora/aurora-host"
+# strip drops the resources appended to the executable: add them back.
+strip --strip-debug "$STAGE/data/aurora/aurora-host"
+xres -o "$STAGE/data/aurora/aurora-host" "$BUILD/aurora-host.rsrc"
+mimeset -f "$STAGE/data/aurora/aurora-host"
 cat > "$STAGE/bin/aurora" <<'SCRIPT'
 #!/bin/sh
 # aurora: run an Electron app on Haiku (aurora --help).
