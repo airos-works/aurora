@@ -11,7 +11,11 @@ CXX ?= g++
 CXXFLAGS ?= -O2 -g
 CXXFLAGS += -std=c++20 -Wall -Wextra -Wno-multichar -Wno-unused-parameter \
 	-Ihost -Ihost/vendor -I$(WEBKIT_INCLUDE) -DAURORA_LEGACY_ENGINE=$(LEGACY_ENGINE)
-LIBS = -L$(WEBKIT_BUNDLE)/lib -lWebKit -lbe -ltracker
+# Where a launcher started from Deskbar finds the engine: beside it, or in a
+# shared install of Summit's engine.
+ENGINE_RPATH ?= $$ORIGIN/webkit/lib:/boot/system/data/summit/webkit/lib:/boot/home/config/non-packaged/data/summit/webkit/lib
+LIBS = -L$(WEBKIT_BUNDLE)/lib -lWebKit -lbe -ltracker -Wl,-rpath,'$(ENGINE_RPATH)'
+
 
 SOURCES = $(wildcard host/*.cpp)
 OBJECTS = $(SOURCES:host/%.cpp=$(BUILD)/%.o)

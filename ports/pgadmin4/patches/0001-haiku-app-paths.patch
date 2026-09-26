@@ -1,0 +1,14 @@
+--- a/runtime/src/js/misc.js
++++ b/runtime/src/js/misc.js
+@@ -40,6 +40,11 @@
+     pythonPath = '../../../../Frameworks/Python.framework/Versions/Current/bin/python3';
+     pgadminFile = '../../../web/pgAdmin4.py';
+     break;
++  case 'haiku':
++    // The Haiku package: <app folder>/{runtime,venv,web}, runtime/src/js here.
++    pythonPath = '../../../venv/bin/python3';
++    pgadminFile = '../../../web/pgAdmin4.py';
++    break;
+   case 'linux':
+     pythonPath = '../../../../../venv/bin/python3';
+     pgadminFile = '../../../../../web/pgAdmin4.py';

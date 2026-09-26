@@ -45,6 +45,7 @@ function locate() {
     process.env.AURORA_HOST,
     settings.host,
     path.join(runtimeRoot, 'aurora-host'),
+    path.join(runtimeRoot, '..', 'aurora-host'),
     path.join(runtimeRoot, '..', 'host', 'aurora-host'),
     path.join(runtimeRoot, '..', 'build', 'aurora-host'),
   ].filter(Boolean);
@@ -74,9 +75,34 @@ class Host extends EventEmitter {
     this.exited = false;
   }
 
+  // Launcher mode: the host started us and waits on descriptors 3 and 4.
+  attach(input, output) {
+    const net = require('net');
+    const reader = new net.Socket({ fd: input, readable: true, writable: false });
+    const writer = new net.Socket({ fd: output, readable: false, writable: true });
+    this.child = { stdin: writer, stdout: reader, pid: 0 };
+    reader.setEncoding('utf8');
+    reader.on('data', (chunk) => this.receive(chunk));
+    writer.on('error', () => {});
+    reader.on('close', () => {
+      this.exited = true;
+      for (const { reject } of [...this.pending.values(), ...this.scripts.values()])
+        reject(new Error('The Aurora host exited'));
+      this.pending.clear();
+      this.scripts.clear();
+      this.emit('exit', { code: 0, signal: null });
+    });
+  }
+
   start() {
+    if (process.env.AURORA_HOST_FDS) {
+      const [input, output] = process.env.AURORA_HOST_FDS.split(',').map(Number);
+      delete process.env.AURORA_HOST_FDS;
+      this.attach(input, output);
+      return;
+    }
     const { host, bundle, mesa } = this.options.location || locate();
-    const env = { ...process.env, ...(this.options.env || {}) };
+    const env = { ...process.env, ...(this.options.env || {}), AURORA_HOST_CHILD: '1' };
     if (bundle) {
       env.WEBKIT_EXEC_PATH = bundle;
       const libraries = [mesa, path.join(bundle, 'lib'), env.LIBRARY_PATH || '/boot/system/lib'].filter(Boolean);

@@ -179,7 +179,8 @@ class BrowserWindow extends Emitter {
       return;
     const event = createEvent();
     this.emit('close', event);
-    if (event.defaultPrevented || this._destroyed)
+    // A 'close' listener may call close() again (pgAdmin does); ask once.
+    if (event.defaultPrevented || this._destroyed || this._closing)
       return;
     this._closing = true;
     this.command('window.close');

@@ -3,6 +3,7 @@
 #include "Dialogs.h"
 
 #include <Alert.h>
+#include <Application.h>
 #include <Button.h>
 #include <CheckBox.h>
 #include <Directory.h>
@@ -237,6 +238,8 @@ void DialogLooper::SetApplicationName(const std::string& name)
 void DialogLooper::Answer(uint64 request, const json& result)
 {
     SendResponse(request, result);
+    if (fQuitAfterAnswer)
+        be_app->PostMessage(B_QUIT_REQUESTED);
 }
 
 void DialogLooper::ShowOpenPanel(uint64 request, const json& options)

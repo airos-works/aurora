@@ -30,6 +30,8 @@ enum : uint32 {
 // Call first thing in main(): keeps the protocol on its own copy of stdout and
 // sends everything else printed to stdout to stderr.
 void InitProtocolOutput();
+// Launcher mode: the runtime is our child and talks over these pipes instead.
+void SetProtocolDescriptors(int input, int output);
 
 // Thread safe; writes one line.
 void SendEvent(const json& event);

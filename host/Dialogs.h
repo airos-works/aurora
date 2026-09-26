@@ -27,6 +27,9 @@ public:
     void ShowErrorBox(const json& options);
     // Named in panel titles ("pgAdmin 4: Open").
     void SetApplicationName(const std::string& name);
+    // One-shot mode (aurora-host --dialog): quit the application after the
+    // first answer.
+    void SetQuitAfterAnswer(bool quit) { fQuitAfterAnswer = quit; }
 
     void MessageReceived(BMessage*) override;
 
@@ -40,6 +43,7 @@ private:
     void FinishPanel(uint64 request);
     std::map<uint64, Panel> fPanels;
     std::string fApplicationName = "Aurora";
+    bool fQuitAfterAnswer = false;
 };
 
 } // namespace aurora

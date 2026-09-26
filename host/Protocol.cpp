@@ -14,6 +14,7 @@ namespace aurora {
 
 static std::mutex sWriteLock;
 static int sOutput = -1;
+static int sInput = STDIN_FILENO;
 
 static void WriteAll(int fd, const char* data, size_t size)
 {
@@ -37,6 +38,13 @@ void SendEvent(const json& event)
     line += '\n';
     std::lock_guard guard(sWriteLock);
     WriteAll(sOutput >= 0 ? sOutput : STDOUT_FILENO, line.data(), line.size());
+}
+
+void SetProtocolDescriptors(int input, int output)
+{
+    std::lock_guard guard(sWriteLock);
+    sInput = input;
+    sOutput = output;
 }
 
 void InitProtocolOutput()
@@ -69,7 +77,7 @@ static int32 ReadCommands(void*)
     std::string buffer;
     char chunk[65536];
     for (;;) {
-        ssize_t count = read(STDIN_FILENO, chunk, sizeof(chunk));
+        ssize_t count = read(sInput, chunk, sizeof(chunk));
         if (count < 0 && errno == EINTR)
             continue;
         if (count <= 0)

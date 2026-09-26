@@ -1,0 +1,13 @@
+#!/bin/sh
+# A linker for Rust crates built on Haiku (Python wheels such as cryptography
+# and bcrypt compile Rust through maturin and setuptools-rust):
+#   export CARGO_TARGET_X86_64_UNKNOWN_HAIKU_LINKER=/path/to/haiku-rust-linker
+# GNU ld 2.46 rejects some objects rustc 1.94 writes ("invalid entry (0) in
+# group"), so link with ld.lld (llvm21_lld). Haiku's gcc links every program
+# -shared, which ld.lld refuses next to the -pie rustc adds: drop that.
+for argument do
+  shift
+  [ "$argument" = "-pie" ] && continue
+  set -- "$@" "$argument"
+done
+exec cc -fuse-ld=lld "$@"

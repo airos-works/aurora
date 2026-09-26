@@ -24,7 +24,10 @@ function syncDialog(kind, options) {
   const line = (result.stdout || '').split('\n').find((text) => text.startsWith('\x1e'));
   if (!line)
     throw new Error(`The ${kind} dialog could not be shown`);
-  return JSON.parse(line.slice(1));
+  const answer = JSON.parse(line.slice(1));
+  if (answer.error !== undefined)
+    throw new Error(answer.error);
+  return answer.result;
 }
 
 const dialog = {
