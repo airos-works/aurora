@@ -464,7 +464,8 @@ function bridgeRuntime() {
     }
 
     if (isTop) {
-      const ready = () => post({ t: 'dom-ready' }).catch(() => {});
+      // The title as parsed: the engine reports it only after the load ends.
+      const ready = () => post({ t: 'dom-ready', title: document.title }).catch(() => {});
       if (document.readyState === 'loading')
         document.addEventListener('DOMContentLoaded', ready, { once: true });
       else

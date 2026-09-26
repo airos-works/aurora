@@ -60,7 +60,9 @@ function locate() {
     '/boot/home/config/non-packaged/lib/summit-webkit',
   ].filter(Boolean);
   const bundle = bundleCandidates.find((candidate) => fs.existsSync(path.join(candidate, 'WebProcess'))) || null;
-  const mesaCandidates = [process.env.AURORA_MESA_LIB, settings.mesaLib, '/boot/home/summit-mesa/prefix/lib'].filter(Boolean);
+  // A bundle carries its own Mesa (mesa/lib); the engine needs EGL.
+  const mesaCandidates = [process.env.AURORA_MESA_LIB, settings.mesaLib, bundle && path.join(bundle, 'mesa', 'lib'),
+    '/boot/home/summit-mesa/prefix/lib'].filter(Boolean);
   const mesa = mesaCandidates.find((candidate) => fs.existsSync(candidate)) || null;
   return { host, bundle, mesa };
 }

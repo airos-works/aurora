@@ -122,7 +122,13 @@ async function clearWebsiteData(session, types, origin) {
     }
     return;
   }
-  await state.host.request('session.clearData', { partition: session.partition, types });
+  // Cookies one by one: removing them as website data does nothing in
+  // WebKit's curl network backend (deleteAllCookiesModifiedSince is a stub).
+  if (types & DATA.cookies)
+    await state.host.request('session.cookies.remove', { partition: session.partition, url: '', name: '' });
+  const rest = types & ~DATA.cookies;
+  if (rest)
+    await state.host.request('session.clearData', { partition: session.partition, types: rest });
 }
 
 class WebRequest {

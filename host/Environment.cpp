@@ -2,8 +2,10 @@
 
 #include "Environment.h"
 
+#include <FindDirectory.h>
 #include <OS.h>
 #include <image.h>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -29,20 +31,68 @@ static std::string ImagePath(const char* leaf, image_type type)
     return std::string();
 }
 
+// glvnd's libEGL finds Mesa through a vendor file (egl_vendor.d/*.json) in
+// directories fixed when it was built; a private Mesa is in none of them,
+// and without it the web process has no EGL display and aborts. Point
+// glvnd at the vendor file that came with this Mesa, or write one.
+static void UseEglVendor(const std::string& mesa)
+{
+    if (getenv("__EGL_VENDOR_LIBRARY_FILENAMES") || getenv("__EGL_VENDOR_LIBRARY_DIRS"))
+        return;
+    std::string prefix = mesa.substr(0, mesa.rfind('/'));
+    for (const char* directory : { "/data/glvnd/egl_vendor.d", "/share/glvnd/egl_vendor.d", "/egl_vendor.d" }) {
+        if (IsDirectory(prefix + directory)) {
+            setenv("__EGL_VENDOR_LIBRARY_DIRS", (prefix + directory).c_str(), 1);
+            return;
+        }
+    }
+    std::string library = mesa + "/libEGL_mesa.so.0";
+    char cache[B_PATH_NAME_LENGTH];
+    if (access(library.c_str(), R_OK) != 0
+        || find_directory(B_USER_CACHE_DIRECTORY, -1, true, cache, sizeof(cache)) != B_OK)
+        return;
+    std::string directory = std::string(cache) + "/Aurora/egl_vendor.d";
+    mkdir((std::string(cache) + "/Aurora").c_str(), 0755);
+    mkdir(directory.c_str(), 0755);
+    std::string file = directory + "/50_mesa.json";
+    if (FILE* json = fopen(file.c_str(), "w")) {
+        fprintf(json, "{\"file_format_version\": \"1.0.0\", \"ICD\": {\"library_path\": \"%s\"}}\n", library.c_str());
+        fclose(json);
+        setenv("__EGL_VENDOR_LIBRARY_FILENAMES", file.c_str(), 1);
+    }
+}
+
 void ReexecForPrivateLibraries(char** argv)
 {
     if (getenv("AURORA_HOST_REEXEC"))
         return;
+    // The engine's own libraries stay where the runtime path finds them.
+    std::string engine = ImagePath("libWebKit.so", B_LIBRARY_IMAGE);
     std::string mesa = getenv("AURORA_MESA_LIB") ? getenv("AURORA_MESA_LIB") : "";
+    if (mesa.empty() && !engine.empty()) {
+        // A bundle carries its Mesa: <bundle>/mesa/lib beside <bundle>/lib.
+        std::string real = engine;
+        if (char* resolved = realpath(engine.c_str(), nullptr)) {
+            real = resolved;
+            free(resolved);
+        }
+        std::string directory = real.substr(0, real.rfind('/'));
+        std::string parent = directory.substr(0, directory.rfind('/'));
+        for (const std::string& candidate : { directory + "/mesa/lib", parent + "/mesa/lib" }) {
+            if (IsDirectory(candidate)) {
+                mesa = candidate;
+                break;
+            }
+        }
+    }
     if (mesa.empty() && IsDirectory("/boot/home/summit-mesa/prefix/lib"))
         mesa = "/boot/home/summit-mesa/prefix/lib";
     if (mesa.empty() || !IsDirectory(mesa))
         return;
+    UseEglVendor(mesa);
     std::string current = getenv("LIBRARY_PATH") ? getenv("LIBRARY_PATH") : "";
     if (current.rfind(mesa, 0) == 0)
         return;
-    // The engine's own libraries stay where the runtime path finds them.
-    std::string engine = ImagePath("libWebKit.so", B_LIBRARY_IMAGE);
     std::string paths = mesa;
     if (!engine.empty())
         paths += ":" + engine.substr(0, engine.rfind('/'));

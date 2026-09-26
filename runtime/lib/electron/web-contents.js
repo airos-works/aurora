@@ -26,6 +26,7 @@ class WebContents extends Emitter {
     this._window = window;
     this._url = '';
     this._title = '';
+    this._engineTitle = '';
     this._loading = false;
     this._generation = null;
     this._finishedGeneration = null;
@@ -567,7 +568,6 @@ class WebContents extends Emitter {
 
   _state(message) {
     const previousUrl = this._url;
-    const previousTitle = this._title;
     const wasLoading = this._loading;
     this._url = message.url || this._url;
     this._canGoBack = !!message.canGoBack;
@@ -591,11 +591,11 @@ class WebContents extends Emitter {
       else
         this.emit('did-navigate', createEvent(), this._url, 200, 'OK');
     }
-    if (message.title !== undefined && message.title !== previousTitle) {
-      this._title = message.title;
-      const event = createEvent();
-      this.emit('page-title-updated', event, this._title, true);
-      this._window._pageTitleUpdated(event, this._title);
+    // Only a change in what the engine reports: it lags behind the title the
+    // page's dom-ready message brought.
+    if (message.title !== undefined && message.title !== this._engineTitle) {
+      this._engineTitle = message.title;
+      this._applyTitle(message.title);
     }
     if (generation !== undefined && generation !== this._finishedGeneration) {
       if (message.loadOutcome === 'succeeded') {
@@ -622,6 +622,15 @@ class WebContents extends Emitter {
     }
     if (wasLoading && !this._loading)
       this.emit('did-stop-loading');
+  }
+
+  _applyTitle(title) {
+    if (title === this._title)
+      return;
+    this._title = title;
+    const event = createEvent();
+    this.emit('page-title-updated', event, this._title, true);
+    this._window._pageTitleUpdated(event, this._title);
   }
 
   _domReady() {
@@ -677,6 +686,8 @@ class WebContents extends Emitter {
     }
     case 'dom-ready':
       reply('null');
+      if (body.top !== false && typeof body.title === 'string' && body.title)
+        this._applyTitle(body.title);
       this._domReady();
       return;
     case 'zoom':
