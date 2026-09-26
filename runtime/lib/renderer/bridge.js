@@ -85,6 +85,12 @@ function bridgeRuntime() {
     if (window[marker])
       return;
     Object.defineProperty(window, marker, { value: true });
+    // The engine's Safari-compatible identity says Mac, which makes apps map
+    // shortcuts to Meta; on Haiku the Command key reaches pages as Control.
+    try {
+      if (/Mac/i.test(navigator.platform))
+        Object.defineProperty(Navigator.prototype, 'platform', { get: () => config.navigatorPlatform, configurable: true });
+    } catch {}
     const handlers = window.webkit && window.webkit.messageHandlers;
     const channel = handlers && handlers.aurora;
     const isTop = window === window.top;
@@ -477,6 +483,7 @@ function buildBridgeScript({ preloadFiles = [], token, versions, resourcesPath, 
     versions,
     resourcesPath,
     systemVersion,
+    navigatorPlatform: `Haiku ${process.arch === 'arm64' ? 'aarch64' : 'x86_64'}`,
   };
   const preloads = preloadFiles.map(bundleSource);
   return `(${bridgeRuntime().toString()})(${JSON.stringify(config)}, [${preloads.join(',\n')}], (${encodeSource}), (${decodeSource}));`;
