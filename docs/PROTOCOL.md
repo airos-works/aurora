@@ -57,6 +57,10 @@ to stderr, so a library printing to stdout cannot corrupt the stream.
 | `notification.show` | `title`, `body`, `tag` | |
 | `screen.get` | | displays |
 | `download.cancel` | `identifier` | |
+| `session.cookies.get` | `partition`, `url` (empty: every cookie) | `[{name, value, domain, path, secure, httpOnly, session, sameSite, expires}]` |
+| `session.cookies.set` | `partition`, `cookie` (those fields; no `expires`: a session cookie) | null |
+| `session.cookies.remove` | `partition`, `url`, `name` (empty: all of the URL's) | null |
+| `session.clearData` | `partition`, `types` (engine B_WEBKIT_DATA_* bits: 1 cookies, 2 cache, 4 local storage, 8 IndexedDB, 16 service workers) | null |
 | `app.beep`, `app.quit` | | |
 
 Window `options`: `title`, `x`, `y`, `width`, `height`, `min/maxWidth/Height`,
@@ -67,6 +71,11 @@ Window `options`: `title`, `x`, `y`, `width`, `height`, `min/maxWidth/Height`,
 (`[{scheme, secure, corsEnabled, bypassCSP}]`) and `inheritScriptsFrom` (a
 page opened by `window.open()` shares its opener's scripts and handlers).
 
+`session.*` commands need an engine with the website data interfaces (the
+ready event's `websiteData`). `expires` is in milliseconds since the epoch;
+a domain cookie's `domain` starts with a dot. The host reaches a partition's
+data through a hidden view of its own, so a session needs no window.
+
 Menu items: `{id, label, type: normal|separator|submenu|checkbox|radio,
 enabled, visible, checked, role, command, key, modifiers, acceleratorLabel,
 submenu}`. `command` and `key` make a Haiku shortcut (Command + key);
@@ -76,7 +85,7 @@ otherwise `acceleratorLabel` is shown after the label.
 
 | Event | Fields |
 |---|---|
-| `ready` | `engine`, `engineError`, `embedding`, `screens`, `darkMode`, `clipboard`, `paths` |
+| `ready` | `engine`, `engineError`, `embedding`, `websiteData`, `screens`, `darkMode`, `clipboard`, `paths` |
 | `window.event` | `id`, `type` (focus, blur, move, resize, minimize, restore, maximize, unmaximize, enter-full-screen, leave-full-screen, show, hide, ready-to-show), `bounds` |
 | `window.close-requested` | `id`, `byPage` (the page called `window.close()`) |
 | `window.close-cancelled` | `id`: a beforeunload handler kept the page |

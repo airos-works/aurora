@@ -6,6 +6,7 @@
 #include "Dialogs.h"
 #include "Embedding.h"
 #include "MenuBuilder.h"
+#include "WebsiteData.h"
 
 #include <Beep.h>
 #include <Clipboard.h>
@@ -133,11 +134,13 @@ void HostApp::ReadyToRun()
     fDialogs->Run();
     status_t status = BWebKitInitialize();
     fEngineReady = status == B_OK;
+    fWebsiteData = std::make_unique<WebsiteData>(BMessenger(this));
     be_clipboard->StartWatching(BMessenger(this));
     fDownloadsPath = DirectoryPath(B_USER_DIRECTORY) + "/Downloads";
     SendEvent({ { "ev", "ready" }, { "engine", fEngineReady },
         { "engineError", fEngineReady ? "" : strerror(status) },
-        { "embedding", AURORA_HAVE_EMBEDDING != 0 }, { "screens", Screens() }, { "darkMode", DarkMode() },
+        { "embedding", AURORA_HAVE_EMBEDDING != 0 }, { "websiteData", WebsiteData::Available() },
+        { "screens", Screens() }, { "darkMode", DarkMode() },
         { "clipboard", ReadClipboard() },
         { "paths", { { "home", DirectoryPath(B_USER_DIRECTORY) }, { "settings", DirectoryPath(B_USER_SETTINGS_DIRECTORY) },
             { "cache", DirectoryPath(B_USER_CACHE_DIRECTORY) }, { "desktop", DirectoryPath(B_DESKTOP_DIRECTORY) },
@@ -377,6 +380,8 @@ void HostApp::HandleCommand(json& command)
     } else if (name == "newpage.decline") {
         BWebKitView::DeclineNewPage(static_cast<uint64>(NumberOf(command, "identifier")));
 #endif
+    } else if (name.rfind("session.", 0) == 0) {
+        fWebsiteData->Handle(name, command, request, ContextFor(StringOf(command, "partition")));
     } else if (name == "download.cancel") {
         for (auto& [partition, context] : fContexts)
             context->CancelDownload(static_cast<uint64>(NumberOf(command, "identifier")));
@@ -440,6 +445,10 @@ void HostApp::ArgvReceived(int32, char**)
 
 void HostApp::MessageReceived(BMessage* message)
 {
+    if (WebsiteData::IsAnswer(message->what)) {
+        WebsiteData::Answer(message);
+        return;
+    }
     switch (message->what) {
     case kCommandMessage: {
         const char* text;

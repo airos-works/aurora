@@ -15,6 +15,7 @@ namespace aurora {
 
 class AppWindow;
 class DialogLooper;
+class WebsiteData;
 
 class HostApp final : public BApplication {
 public:
@@ -50,6 +51,7 @@ private:
     bool fQuitting = false;
     bool fEngineReady = false;
     DialogLooper* fDialogs = nullptr;
+    std::unique_ptr<WebsiteData> fWebsiteData;
 };
 
 } // namespace aurora

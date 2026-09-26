@@ -164,6 +164,23 @@ function closeWindow(window) {
   send({ ev: 'window.closed', id: window.id });
 }
 
+// Cookie jars per partition, standing in for the engine's website data.
+const jars = new Map();
+
+function jar(partition) {
+  if (!jars.has(partition || ''))
+    jars.set(partition || '', []);
+  return jars.get(partition || '');
+}
+
+function cookieForURL(cookie, address) {
+  const url = new URL(address);
+  const domain = cookie.domain.replace(/^\./, '');
+  const hostMatches = cookie.domain.startsWith('.')
+    ? url.hostname === domain || url.hostname.endsWith(`.${domain}`) : url.hostname === domain;
+  return hostMatches && url.pathname.startsWith(cookie.path) && (!cookie.secure || url.protocol === 'https:');
+}
+
 function handle(command) {
   log(JSON.stringify(command).slice(0, 300));
   const window = command.id !== undefined ? windows.get(command.id) : null;
@@ -239,6 +256,29 @@ function handle(command) {
     return;
   case 'mock.menuClick':
     return;
+  case 'session.cookies.get': {
+    const cookies = jar(command.partition);
+    return respond(command, command.url ? cookies.filter((cookie) => cookieForURL(cookie, command.url)) : cookies);
+  }
+  case 'session.cookies.set': {
+    const cookies = jar(command.partition);
+    const cookie = { session: command.cookie.expires === undefined, ...command.cookie };
+    const index = cookies.findIndex((other) => other.name === cookie.name && other.domain === cookie.domain && other.path === cookie.path);
+    if (index >= 0)
+      cookies.splice(index, 1);
+    cookies.push(cookie);
+    return respond(command);
+  }
+  case 'session.cookies.remove': {
+    const cookies = jar(command.partition);
+    jars.set(command.partition || '', cookies.filter((cookie) =>
+      !((!command.url || cookieForURL(cookie, command.url)) && (!command.name || cookie.name === command.name))));
+    return respond(command);
+  }
+  case 'session.clearData':
+    if (command.types & 1)
+      jars.set(command.partition || '', []);
+    return respond(command);
   case 'app.quit':
     send({ ev: 'mock.quitting' });
     process.exit(0);
@@ -265,7 +305,7 @@ process.stdin.on('end', () => process.exit(0));
 
 console.log('this line is noise that the runtime must ignore');
 send({
-  ev: 'ready', engine: true, engineError: '', embedding: true,
+  ev: 'ready', engine: true, engineError: '', embedding: true, websiteData: true,
   screens: [{ id: 0, bounds: { x: 0, y: 0, width: 1920, height: 1080 }, workArea: { x: 0, y: 0, width: 1920, height: 1056 }, scaleFactor: 1 }],
   darkMode: false, clipboard: { text: '', html: '' },
   paths: { home: os.homedir(), settings: process.env.MOCK_HOST_SETTINGS || os.tmpdir(), cache: os.tmpdir(),

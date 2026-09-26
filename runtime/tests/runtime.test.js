@@ -117,3 +117,9 @@ test('an ESM app with a preload runs end to end on the mock host', () => {
   assert.match(result.stdout, /^PASS$/m);
   assert.match(result.stdout, /^quit event$/m);
 });
+
+test('session cookies and clearStorageData reach the host', () => {
+  const result = runApp(path.join(__dirname, 'apps/cookies'));
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /^PASS$/m);
+});

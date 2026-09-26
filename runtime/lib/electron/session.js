@@ -1,19 +1,128 @@
 'use strict';
 
-// session: one per partition, matching aurora-host's web contexts. Cookie,
-// cache and request interception interfaces are accepted but mostly inert:
-// the engine manages its own website data.
+// session: one per partition, matching aurora-host's web contexts. Cookies
+// and clearing website data go to the engine when it has the interfaces (the
+// host's ready event says websiteData); request interception is accepted
+// but inert.
 
 const path = require('path');
-const { Emitter } = require('./common');
+const { Emitter, state, createEvent } = require('./common');
 
 const sessions = new Map();
 
+// The engine's website data types (WebKitEmbedding.h, B_WEBKIT_DATA_*).
+const DATA = { cookies: 1, cache: 2, localStorage: 4, indexedDB: 8, serviceWorkers: 16 };
+const ALL_DATA = 0xffffffff;
+// Electron's clearStorageData storages, and clearData's dataTypes.
+const STORAGES = {
+  cookies: DATA.cookies, localstorage: DATA.localStorage, indexdb: DATA.indexedDB,
+  serviceworkers: DATA.serviceWorkers, cachestorage: DATA.serviceWorkers,
+};
+const DATA_TYPES = {
+  cookies: DATA.cookies, cache: DATA.cache, localStorage: DATA.localStorage, indexedDB: DATA.indexedDB,
+  serviceWorkers: DATA.serviceWorkers, backgroundFetch: DATA.serviceWorkers,
+};
+
+function hasWebsiteData() {
+  return !!(state.readyInfo && state.readyInfo.websiteData && state.host);
+}
+
+function sameSiteToEngine(value) {
+  return value === 'strict' || value === 'lax' ? value : 'none';
+}
+
+// An engine cookie as Electron's Cookie.
+function toElectronCookie(cookie) {
+  const result = {
+    name: cookie.name, value: cookie.value, domain: cookie.domain,
+    hostOnly: !cookie.domain.startsWith('.'), path: cookie.path || '/',
+    secure: !!cookie.secure, httpOnly: !!cookie.httpOnly, session: !!cookie.session,
+    sameSite: cookie.sameSite === 'strict' || cookie.sameSite === 'lax' ? cookie.sameSite : 'unspecified',
+  };
+  if (!cookie.session && typeof cookie.expires === 'number')
+    result.expirationDate = cookie.expires / 1000;
+  return result;
+}
+
+function domainMatches(cookieDomain, filter) {
+  const domain = cookieDomain.replace(/^\./, '').toLowerCase();
+  const wanted = String(filter).replace(/^\./, '').toLowerCase();
+  return domain === wanted || domain.endsWith(`.${wanted}`);
+}
+
 class Cookies extends Emitter {
-  get() { return Promise.resolve([]); }
-  set() { return Promise.resolve(); }
-  remove() { return Promise.resolve(); }
+  constructor(session) {
+    super();
+    this._session = session;
+  }
+
+  _request(command, fields) {
+    return state.host.request(command, { partition: this._session.partition, ...fields });
+  }
+
+  async get(filter = {}) {
+    if (!hasWebsiteData())
+      return [];
+    const cookies = (await this._request('session.cookies.get', { url: filter.url || '' })) || [];
+    return cookies.map(toElectronCookie).filter((cookie) =>
+      (filter.name === undefined || cookie.name === filter.name)
+      && (filter.domain === undefined || domainMatches(cookie.domain, filter.domain))
+      && (filter.path === undefined || cookie.path === filter.path)
+      && (filter.secure === undefined || cookie.secure === !!filter.secure)
+      && (filter.httpOnly === undefined || cookie.httpOnly === !!filter.httpOnly)
+      && (filter.session === undefined || cookie.session === !!filter.session));
+  }
+
+  async set(details = {}) {
+    let url;
+    try {
+      url = new URL(details.url);
+    } catch {
+      throw new Error(`Failed to set cookie: the URL ${JSON.stringify(details.url)} is not valid`);
+    }
+    // Without a domain the cookie belongs to the URL's host alone; with one,
+    // to the domain and its subdomains. The default path is the URL's
+    // directory, as a Set-Cookie header without Path would have.
+    const domain = details.domain ? (details.domain.startsWith('.') ? details.domain : `.${details.domain}`) : url.hostname;
+    const directory = url.pathname.slice(0, url.pathname.lastIndexOf('/')) || '/';
+    const cookie = {
+      name: String(details.name || ''), value: String(details.value || ''), domain,
+      path: details.path || directory, secure: !!details.secure, httpOnly: !!details.httpOnly,
+      sameSite: sameSiteToEngine(details.sameSite),
+    };
+    if (typeof details.expirationDate === 'number')
+      cookie.expires = details.expirationDate * 1000;
+    if (!hasWebsiteData())
+      return;
+    await this._request('session.cookies.set', { cookie });
+    this.emit('changed', createEvent(), toElectronCookie({ ...cookie, session: cookie.expires === undefined }), 'explicit', false);
+  }
+
+  async remove(url, name) {
+    if (!hasWebsiteData())
+      return;
+    const removed = await this.get({ url, name });
+    await this._request('session.cookies.remove', { url: String(url || ''), name: String(name || '') });
+    for (const cookie of removed)
+      this.emit('changed', createEvent(), cookie, 'explicit', true);
+  }
+
   flushStore() { return Promise.resolve(); }
+}
+
+async function clearWebsiteData(session, types, origin) {
+  if (!hasWebsiteData() || !types)
+    return;
+  if (origin) {
+    // The engine removes a type for every site at once. For one origin only
+    // its cookies can go; clearing the rest would lose other sites' data.
+    if (types & DATA.cookies) {
+      for (const cookie of await session.cookies.get({ url: origin }))
+        await session.cookies.remove(origin, cookie.name);
+    }
+    return;
+  }
+  await state.host.request('session.clearData', { partition: session.partition, types });
 }
 
 class WebRequest {
@@ -39,7 +148,7 @@ class Session extends Emitter {
   constructor(partition) {
     super();
     this.partition = partition;
-    this.cookies = new Cookies();
+    this.cookies = new Cookies(this);
     this.webRequest = new WebRequest();
     this.protocol = require('./protocol').protocol;
     this.netLog = { startLogging: () => Promise.resolve(), stopLogging: () => Promise.resolve(), currentlyLogging: false };
@@ -77,9 +186,20 @@ class Session extends Emitter {
   isPersistent() { return this.partition === '' || this.partition.startsWith('persist:'); }
   getStoragePath() { return this.storagePath; }
   getCacheSize() { return Promise.resolve(0); }
-  clearCache() { return Promise.resolve(); }
-  clearStorageData() { return Promise.resolve(); }
-  clearData() { return Promise.resolve(); }
+  clearCache() { return clearWebsiteData(this, DATA.cache); }
+  clearStorageData(options = {}) {
+    const storages = Array.isArray(options.storages) ? options.storages : Object.keys(STORAGES);
+    const types = storages.reduce((mask, storage) => mask | (STORAGES[String(storage).toLowerCase()] || 0), 0);
+    return clearWebsiteData(this, types, options.origin);
+  }
+  clearData(options = {}) {
+    const types = Array.isArray(options.dataTypes)
+      ? options.dataTypes.reduce((mask, type) => mask | (DATA_TYPES[type] || 0), 0) : ALL_DATA;
+    const origins = Array.isArray(options.origins) ? options.origins : [];
+    if (origins.length)
+      return Promise.all(origins.map((origin) => clearWebsiteData(this, types, origin))).then(() => {});
+    return clearWebsiteData(this, types);
+  }
   flushStorageData() {}
   clearAuthCache() { return Promise.resolve(); }
   clearHostResolverCache() { return Promise.resolve(); }
