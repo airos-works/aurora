@@ -50,6 +50,7 @@
 #include "NativeWebKeyboardEvent.h"
 #include "NativeWebMouseEvent.h"
 #include "NativeWebWheelEvent.h"
+#include "EmbeddingHaiku.h"
 #include "OpenPanelHaiku.h"
 #include "PageLoadState.h"
 #include "WKAPICast.h"
@@ -772,8 +773,11 @@ public:
 
     bool canRunBeforeUnloadConfirmPanel() const override { return true; }
 
-    void runBeforeUnloadConfirmPanel(WebPageProxy&, String&& message, WebFrameProxy*, FrameInfoData&& frame, Function<void(bool)>&& completion) override
+    void runBeforeUnloadConfirmPanel(WebPageProxy& page, String&& message, WebFrameProxy*, FrameInfoData&& frame, Function<void(bool)>&& completion) override
     {
+        // Hosts such as Electron's runtime can answer without asking.
+        if (answerBeforeUnloadHaiku(page, completion))
+            return;
         show(JavaScriptDialogKindHaiku::BeforeUnload, message, { }, frame, dialogCompletionOnMainHaiku(
             [completion = WTF::move(completion)](bool accepted, const std::string&) { completion(accepted); }));
     }

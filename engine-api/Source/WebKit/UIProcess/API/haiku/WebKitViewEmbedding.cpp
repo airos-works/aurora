@@ -97,7 +97,9 @@ BMessenger viewOfPageHaiku(WebPageProxy& page)
 void addStringHaiku(BMessage& message, const char* name, const String& text)
 {
     auto utf8 = text.utf8();
-    message.AddString(name, utf8.data() ? utf8.data() : "");
+    // CString::data() is char8_t in this WebKit; BMessage takes char.
+    const char* characters = utf8.legacyCStringPointer();
+    message.AddString(name, characters ? characters : "");
 }
 
 // Converted values may be cyclic; anything deeper than this becomes null.

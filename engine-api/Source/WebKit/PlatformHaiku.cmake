@@ -334,6 +334,7 @@ if (ENABLE_WK_WEB_EXTENSIONS)
         WebProcess/Extensions/Interfaces/WebExtensionAPIIdle
         WebProcess/Extensions/Interfaces/WebExtensionAPIManagement
         WebProcess/Extensions/Interfaces/WebExtensionAPINotificationsHaiku
+        WebProcess/Extensions/Interfaces/WebExtensionAPIOffscreen
         WebProcess/Extensions/Interfaces/WebExtensionAPIPrivacy
         WebProcess/Extensions/Interfaces/WebExtensionAPIPrivacyCategory
         WebProcess/Extensions/Interfaces/WebExtensionAPIPrivacySetting
@@ -342,6 +343,7 @@ if (ENABLE_WK_WEB_EXTENSIONS)
     # The scripting and declarativeNetRequest namespaces use the C++ bindings here, not the Objective-C ones.
     list(REMOVE_ITEM WebKit_BINDINGS_IN_FILES
         WebProcess/Extensions/Interfaces/WebExtensionAPIDeclarativeNetRequest
+        WebProcess/Extensions/Interfaces/WebExtensionAPIOffscreen
         WebProcess/Extensions/Interfaces/WebExtensionAPIScripting
     )
     list(APPEND WebKit_SOURCES
@@ -353,6 +355,8 @@ if (ENABLE_WK_WEB_EXTENSIONS)
         WebProcess/Extensions/API/WebExtensionAPIIdle.cpp
         WebProcess/Extensions/API/WebExtensionAPIManagement.cpp
         WebProcess/Extensions/API/WebExtensionAPINotificationsHaiku.cpp
+        WebProcess/Extensions/API/WebExtensionAPIOffscreen.cpp
+        UIProcess/Extensions/haiku/WebExtensionContextAPIOffscreenHaiku.cpp
         WebProcess/Extensions/API/WebExtensionAPIPrivacy.cpp
         Shared/Extensions/WebExtensionPrivacySettingsHaiku.cpp
         UIProcess/Extensions/haiku/WebExtensionContextAPIPrivacyHaiku.cpp
