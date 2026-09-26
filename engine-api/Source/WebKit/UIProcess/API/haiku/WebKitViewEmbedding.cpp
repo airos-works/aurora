@@ -38,6 +38,7 @@
 #include <WebCore/MIMETypeRegistry.h>
 #include <WebCore/ResourceError.h>
 #include <WebCore/ResourceResponse.h>
+#include <WebCore/RunJavaScriptParameters.h>
 #include <WebCore/SharedBuffer.h>
 #include <WebCore/UserScript.h>
 #include <cmath>
@@ -247,7 +248,7 @@ private:
         if (RefPtr body = request.httpBody()) {
             auto data = body->flatten();
             if (!data.isEmpty())
-                message.AddData("body", B_RAW_TYPE, data.data(), data.size());
+                message.AddData("body", B_RAW_TYPE, data.span().data(), data.size());
         }
         message.AddBool("main_frame", task.frameInfo().isMainFrame());
         pendingSchemeTasksHaiku().add(identifier, Ref { task });
@@ -422,7 +423,7 @@ void BWebKitView::EvaluateJavaScript(const char* source, BMessenger reply, uint6
             reply.SendMessage(&message, static_cast<BHandler*>(nullptr), 0);
             return;
         }
-        RunJavaScriptParameters parameters {
+        WebKit::RunJavaScriptParameters parameters {
             WTF::move(*string),
             JSC::SourceTaintedOrigin::Untainted,
             URL { },
@@ -512,9 +513,9 @@ void BWebKitView::RespondToURLSchemeRequest(uint64 identifier, int32 status, con
         String type = extractMIMETypeFromMediaType(mediaType);
         if (type.isEmpty())
             type = MIMETypeRegistry::mimeTypeForPath(url.path());
-        ResourceResponse response(URL { url }, type, static_cast<long long>(body.size()), extractCharsetFromMediaType(mediaType).toString());
+        ResourceResponse response(URL { url }, String { type }, static_cast<long long>(body.size()), extractCharsetFromMediaType(mediaType).toString());
         response.setHTTPStatusCode(status);
-        response.setHTTPStatusText(status >= 200 && status < 300 ? "OK"_s : emptyString());
+        response.setHTTPStatusText(status >= 200 && status < 300 ? String { "OK"_s } : String { });
         bool hasContentType = false;
         for (auto& [name, value] : headerList) {
             String headerName = stringHaiku(name);
