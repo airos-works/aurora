@@ -10,8 +10,8 @@ import os
 HELP_PATH = '../../docs/en_US/_build/html/'
 MINIFY_HTML = False
 
-# pg_dump, pg_restore, pg_dumpall and psql come from postgresql18_server and
-# postgresql18 in /boot/system/bin.
+# pg_dump, pg_restore, pg_dumpall (postgresql18_server) and psql (postgresql18)
+# are in /boot/system/bin; the package requires them.
 DEFAULT_BINARY_PATHS = {
     'pg': '/boot/system/bin',
     'ppas': ''

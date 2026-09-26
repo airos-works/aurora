@@ -41,7 +41,27 @@ enum : uint32 {
     B_WEBKIT_URL_SCHEME_REQUEST_STOPPED = 'wuss',
     // A beforeunload handler kept the page, and the view's behavior is
     // B_WEBKIT_BEFORE_UNLOAD_CANCEL, so no question was asked. Fields: "view".
-    B_WEBKIT_BEFORE_UNLOAD_PREVENTED = 'wbup'
+    B_WEBKIT_BEFORE_UNLOAD_PREVENTED = 'wbup',
+    // Answers GetCookies(). Fields: "identifier" (uint64), "error" (string)
+    // on failure, else repeated "cookie" messages: "name", "value", "domain",
+    // "path", "sameSite" ("none", "lax", "strict") strings; "httpOnly",
+    // "secure", "session" bools; "expires" (double, milliseconds since the
+    // epoch) unless it is a session cookie.
+    B_WEBKIT_COOKIES = 'wcok',
+    // Answers SetCookie() and DeleteCookies(): "identifier", "error" on failure.
+    B_WEBKIT_COOKIES_CHANGED = 'wcoc',
+    // Answers RemoveWebsiteData(): "identifier".
+    B_WEBKIT_WEBSITE_DATA_REMOVED = 'wdrm'
+};
+
+// RemoveWebsiteData(): what to remove.
+enum : uint32 {
+    B_WEBKIT_DATA_COOKIES = 1 << 0,
+    B_WEBKIT_DATA_CACHE = 1 << 1,           // disk and memory cache
+    B_WEBKIT_DATA_LOCAL_STORAGE = 1 << 2,   // local and session storage
+    B_WEBKIT_DATA_INDEXED_DB = 1 << 3,
+    B_WEBKIT_DATA_SERVICE_WORKERS = 1 << 4, // registrations and DOM caches
+    B_WEBKIT_DATA_ALL = 0xffffffff
 };
 
 // SetBeforeUnloadBehavior(): what happens when a page's beforeunload handler

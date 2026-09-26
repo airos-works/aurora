@@ -1,0 +1,244 @@
+--- a/Source/WebKit/UIProcess/API/haiku/WebKitEmbedding.h
++++ b/Source/WebKit/UIProcess/API/haiku/WebKitEmbedding.h
+@@ -41,7 +41,27 @@
+     B_WEBKIT_URL_SCHEME_REQUEST_STOPPED = 'wuss',
+     // A beforeunload handler kept the page, and the view's behavior is
+     // B_WEBKIT_BEFORE_UNLOAD_CANCEL, so no question was asked. Fields: "view".
+-    B_WEBKIT_BEFORE_UNLOAD_PREVENTED = 'wbup'
++    B_WEBKIT_BEFORE_UNLOAD_PREVENTED = 'wbup',
++    // Answers GetCookies(). Fields: "identifier" (uint64), "error" (string)
++    // on failure, else repeated "cookie" messages: "name", "value", "domain",
++    // "path", "sameSite" ("none", "lax", "strict") strings; "httpOnly",
++    // "secure", "session" bools; "expires" (double, milliseconds since the
++    // epoch) unless it is a session cookie.
++    B_WEBKIT_COOKIES = 'wcok',
++    // Answers SetCookie() and DeleteCookies(): "identifier", "error" on failure.
++    B_WEBKIT_COOKIES_CHANGED = 'wcoc',
++    // Answers RemoveWebsiteData(): "identifier".
++    B_WEBKIT_WEBSITE_DATA_REMOVED = 'wdrm'
++};
++
++// RemoveWebsiteData(): what to remove.
++enum : uint32 {
++    B_WEBKIT_DATA_COOKIES = 1 << 0,
++    B_WEBKIT_DATA_CACHE = 1 << 1,           // disk and memory cache
++    B_WEBKIT_DATA_LOCAL_STORAGE = 1 << 2,   // local and session storage
++    B_WEBKIT_DATA_INDEXED_DB = 1 << 3,
++    B_WEBKIT_DATA_SERVICE_WORKERS = 1 << 4, // registrations and DOM caches
++    B_WEBKIT_DATA_ALL = 0xffffffff
+ };
+ 
+ // SetBeforeUnloadBehavior(): what happens when a page's beforeunload handler
+--- a/Source/WebKit/UIProcess/API/haiku/WebKitView.h
++++ b/Source/WebKit/UIProcess/API/haiku/WebKitView.h
+@@ -148,6 +148,18 @@
+     void SetBeforeUnloadBehavior(uint32 behavior, BMessenger target = BMessenger());
+     // Page zoom as a factor (1 is 100%), as Electron's setZoomFactor.
+     void SetZoomFactor(double factor);
++    // The cookies of this view's website data (its BWebKitContext), including
++    // HttpOnly ones: for the URL, or all when url is null or empty. Answered
++    // with B_WEBKIT_COOKIES to reply.
++    void GetCookies(const char* url, BMessenger reply, uint64 identifier);
++    // A cookie as the fields of B_WEBKIT_COOKIES; B_WEBKIT_COOKIES_CHANGED.
++    void SetCookie(const BMessage& cookie, BMessenger reply, uint64 identifier);
++    // Cookies of the URL (every cookie when url is empty), only those named
++    // name when it is not empty; B_WEBKIT_COOKIES_CHANGED.
++    void DeleteCookies(const char* url, const char* name, BMessenger reply, uint64 identifier);
++    // B_WEBKIT_DATA_* of the view's website data, of all time;
++    // B_WEBKIT_WEBSITE_DATA_REMOVED.
++    void RemoveWebsiteData(uint32 types, BMessenger reply, uint64 identifier);
+ 
+     void AttachedToWindow() override;
+     void DetachedFromWindow() override;
+--- a/Source/WebKit/UIProcess/API/haiku/WebKitViewEmbedding.cpp
++++ b/Source/WebKit/UIProcess/API/haiku/WebKitViewEmbedding.cpp
+@@ -10,6 +10,7 @@
+ #include "APIContentWorld.h"
+ #include "APIDictionary.h"
+ #include "APIFrameInfo.h"
++#include "APIHTTPCookieStore.h"
+ #include "APINumber.h"
+ #include "APIPageConfiguration.h"
+ #include "APIString.h"
+@@ -27,7 +28,10 @@
+ #include "EmbeddingHaiku.h"
+ #include "WebViewPrivate.h"
+ #include "WebViewStateHaiku.h"
++#include "WebsiteDataStore.h"
++#include "WebsiteDataType.h"
+ #include <Message.h>
++#include <WebCore/Cookie.h>
+ #include <WebCore/ExceptionDetails.h>
+ #include <WebCore/FormData.h>
+ #include <WebCore/HTTPParsers.h>
+@@ -46,6 +50,7 @@
+ #include <wtf/NeverDestroyed.h>
+ #include <wtf/RunLoop.h>
+ #include <wtf/URLParser.h>
++#include <wtf/WallTime.h>
+ #include <wtf/text/StringBuilder.h>
+ 
+ using namespace WebKit;
+@@ -533,3 +538,162 @@
+             description.empty() ? "The request failed"_s : stringHaiku(description)));
+     });
+ }
++
++namespace {
++
++void addCookieHaiku(BMessage& message, const WebCore::Cookie& cookie)
++{
++    BMessage entry;
++    addStringHaiku(entry, "name", cookie.name);
++    addStringHaiku(entry, "value", cookie.value);
++    addStringHaiku(entry, "domain", cookie.domain);
++    addStringHaiku(entry, "path", cookie.path);
++    entry.AddString("sameSite", cookie.sameSite == WebCore::Cookie::SameSitePolicy::Strict ? "strict"
++        : cookie.sameSite == WebCore::Cookie::SameSitePolicy::Lax ? "lax" : "none");
++    entry.AddBool("httpOnly", cookie.httpOnly);
++    entry.AddBool("secure", cookie.secure);
++    entry.AddBool("session", cookie.session || !cookie.expires);
++    if (cookie.expires && !cookie.session)
++        entry.AddDouble("expires", *cookie.expires);
++    message.AddMessage("cookie", &entry);
++}
++
++void replyHaiku(BMessenger reply, uint32 what, uint64 identifier, const char* error = nullptr)
++{
++    BMessage message(what);
++    message.AddUInt64("identifier", identifier);
++    if (error)
++        message.AddString("error", error);
++    reply.SendMessage(&message, static_cast<BHandler*>(nullptr), 0);
++}
++
++} // namespace
++
++void BWebKitView::GetCookies(const char* url, BMessenger reply, uint64 identifier)
++{
++    if (m_status != B_OK) {
++        replyHaiku(reply, B_WEBKIT_COOKIES, identifier, "The view has no page");
++        return;
++    }
++    WTF::RunLoop::mainSingleton().dispatch([state = m_state, url = copyTextHaiku(url), reply, identifier] {
++        auto* page = pageHaiku(state);
++        if (!page) {
++            replyHaiku(reply, B_WEBKIT_COOKIES, identifier, "The view is closed");
++            return;
++        }
++        auto deliver = [reply, identifier](Vector<WebCore::Cookie>&& cookies) {
++            BMessage message(B_WEBKIT_COOKIES);
++            message.AddUInt64("identifier", identifier);
++            for (auto& cookie : cookies)
++                addCookieHaiku(message, cookie);
++            reply.SendMessage(&message, static_cast<BHandler*>(nullptr), 0);
++        };
++        auto& store = page->websiteDataStore().cookieStore();
++        if (url.empty())
++            store.cookies(WTF::move(deliver));
++        else
++            store.cookiesForURL(URL { stringHaiku(url) }, WTF::move(deliver));
++    });
++}
++
++void BWebKitView::SetCookie(const BMessage& fields, BMessenger reply, uint64 identifier)
++{
++    if (m_status != B_OK) {
++        replyHaiku(reply, B_WEBKIT_COOKIES_CHANGED, identifier, "The view has no page");
++        return;
++    }
++    WebCore::Cookie cookie;
++    cookie.name = String::fromUTF8(fields.GetString("name", ""));
++    cookie.value = String::fromUTF8(fields.GetString("value", ""));
++    cookie.domain = String::fromUTF8(fields.GetString("domain", ""));
++    cookie.path = String::fromUTF8(fields.GetString("path", "/"));
++    cookie.httpOnly = fields.GetBool("httpOnly", false);
++    cookie.secure = fields.GetBool("secure", false);
++    double expires;
++    if (fields.FindDouble("expires", &expires) == B_OK && !fields.GetBool("session", false))
++        cookie.expires = expires;
++    else
++        cookie.session = true;
++    cookie.created = WallTime::now().secondsSinceEpoch().milliseconds();
++    std::string sameSite = fields.GetString("sameSite", "none");
++    cookie.sameSite = sameSite == "strict" ? WebCore::Cookie::SameSitePolicy::Strict
++        : sameSite == "lax" ? WebCore::Cookie::SameSitePolicy::Lax : WebCore::Cookie::SameSitePolicy::None;
++    WTF::RunLoop::mainSingleton().dispatch([state = m_state, cookie = WTF::move(cookie), reply, identifier]() mutable {
++        auto* page = pageHaiku(state);
++        if (!page) {
++            replyHaiku(reply, B_WEBKIT_COOKIES_CHANGED, identifier, "The view is closed");
++            return;
++        }
++        page->websiteDataStore().cookieStore().setCookies({ WTF::move(cookie) }, [reply, identifier] {
++            replyHaiku(reply, B_WEBKIT_COOKIES_CHANGED, identifier);
++        });
++    });
++}
++
++void BWebKitView::DeleteCookies(const char* url, const char* name, BMessenger reply, uint64 identifier)
++{
++    if (m_status != B_OK) {
++        replyHaiku(reply, B_WEBKIT_COOKIES_CHANGED, identifier, "The view has no page");
++        return;
++    }
++    WTF::RunLoop::mainSingleton().dispatch([state = m_state, url = copyTextHaiku(url), name = copyTextHaiku(name), reply, identifier] {
++        auto* page = pageHaiku(state);
++        if (!page) {
++            replyHaiku(reply, B_WEBKIT_COOKIES_CHANGED, identifier, "The view is closed");
++            return;
++        }
++        Ref<API::HTTPCookieStore> store = page->websiteDataStore().cookieStore();
++        auto remove = [store, name = stringHaiku(name), reply, identifier](Vector<WebCore::Cookie>&& cookies) {
++            Vector<WebCore::Cookie> doomed;
++            for (auto& cookie : cookies) {
++                if (name.isEmpty() || cookie.name == name)
++                    doomed.append(cookie);
++            }
++            if (doomed.isEmpty()) {
++                replyHaiku(reply, B_WEBKIT_COOKIES_CHANGED, identifier);
++                return;
++            }
++            // Answer once, after the last deletion.
++            auto remaining = std::make_shared<size_t>(doomed.size());
++            for (auto& cookie : doomed) {
++                store->deleteCookie(cookie, [remaining, reply, identifier] {
++                    if (!--*remaining)
++                        replyHaiku(reply, B_WEBKIT_COOKIES_CHANGED, identifier);
++                });
++            }
++        };
++        if (url.empty())
++            store->cookies(WTF::move(remove));
++        else
++            store->cookiesForURL(URL { stringHaiku(url) }, WTF::move(remove));
++    });
++}
++
++void BWebKitView::RemoveWebsiteData(uint32 types, BMessenger reply, uint64 identifier)
++{
++    if (m_status != B_OK) {
++        replyHaiku(reply, B_WEBKIT_WEBSITE_DATA_REMOVED, identifier, "The view has no page");
++        return;
++    }
++    WTF::RunLoop::mainSingleton().dispatch([state = m_state, types, reply, identifier] {
++        auto* page = pageHaiku(state);
++        if (!page) {
++            replyHaiku(reply, B_WEBKIT_WEBSITE_DATA_REMOVED, identifier, "The view is closed");
++            return;
++        }
++        OptionSet<WebsiteDataType> data;
++        if (types & B_WEBKIT_DATA_COOKIES)
++            data.add(WebsiteDataType::Cookies);
++        if (types & B_WEBKIT_DATA_CACHE)
++            data.add({ WebsiteDataType::DiskCache, WebsiteDataType::MemoryCache });
++        if (types & B_WEBKIT_DATA_LOCAL_STORAGE)
++            data.add({ WebsiteDataType::LocalStorage, WebsiteDataType::SessionStorage });
++        if (types & B_WEBKIT_DATA_INDEXED_DB)
++            data.add(WebsiteDataType::IndexedDBDatabases);
++        if (types & B_WEBKIT_DATA_SERVICE_WORKERS)
++            data.add({ WebsiteDataType::ServiceWorkerRegistrations, WebsiteDataType::DOMCache });
++        page->websiteDataStore().removeData(data, WallTime::fromRawSeconds(0), [reply, identifier] {
++            replyHaiku(reply, B_WEBKIT_WEBSITE_DATA_REMOVED, identifier);
++        });
++    });
++}

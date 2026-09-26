@@ -143,6 +143,23 @@ public:
     static void RespondToURLSchemeRequest(uint64 identifier, int32 status, const char* mimeType,
         const BMessage* headers, const void* data, size_t size);
     static void FailURLSchemeRequest(uint64 identifier, const char* description = nullptr);
+    // How a beforeunload handler that asks to stay is answered; notifications
+    // (B_WEBKIT_BEFORE_UNLOAD_PREVENTED) go to target.
+    void SetBeforeUnloadBehavior(uint32 behavior, BMessenger target = BMessenger());
+    // Page zoom as a factor (1 is 100%), as Electron's setZoomFactor.
+    void SetZoomFactor(double factor);
+    // The cookies of this view's website data (its BWebKitContext), including
+    // HttpOnly ones: for the URL, or all when url is null or empty. Answered
+    // with B_WEBKIT_COOKIES to reply.
+    void GetCookies(const char* url, BMessenger reply, uint64 identifier);
+    // A cookie as the fields of B_WEBKIT_COOKIES; B_WEBKIT_COOKIES_CHANGED.
+    void SetCookie(const BMessage& cookie, BMessenger reply, uint64 identifier);
+    // Cookies of the URL (every cookie when url is empty), only those named
+    // name when it is not empty; B_WEBKIT_COOKIES_CHANGED.
+    void DeleteCookies(const char* url, const char* name, BMessenger reply, uint64 identifier);
+    // B_WEBKIT_DATA_* of the view's website data, of all time;
+    // B_WEBKIT_WEBSITE_DATA_REMOVED.
+    void RemoveWebsiteData(uint32 types, BMessenger reply, uint64 identifier);
 
     void AttachedToWindow() override;
     void DetachedFromWindow() override;

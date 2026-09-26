@@ -2,7 +2,8 @@
 # Make aurora-<version>-1-<arch>.hpkg on Haiku from a built tree:
 #   make WEBKIT_BUNDLE=... && tools/package-haiku.sh [output directory]
 # Installs the runtime in data/aurora, the host beside it and `aurora` and
-# `electron` commands; the WebKit engine is Summit's (see host/Environment.h).
+# `electron` commands; the WebKit engine is Summit's summit_webkit package,
+# in /boot/system/lib/summit-webkit (see host/Environment.h).
 set -euo pipefail
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 OUT=${1:-$ROOT/build}
@@ -44,6 +45,7 @@ provides {
 requires {
 	haiku
 	cmd:node
+	summit_webkit >= 1.10.0
 }
 INFO
 mkdir -p "$OUT"

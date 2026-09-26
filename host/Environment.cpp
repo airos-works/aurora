@@ -61,6 +61,12 @@ void SetEngineExecutablePath()
     std::string library = ImagePath("libWebKit.so", B_LIBRARY_IMAGE);
     if (library.empty())
         return;
+    // Through any symbolic link to the engine (a bundle's lib linked as
+    // ~/config/non-packaged/lib/summit-webkit), to where it really is.
+    if (char* resolved = realpath(library.c_str(), nullptr)) {
+        library = resolved;
+        free(resolved);
+    }
     // The shared engine install keeps WebProcess beside libWebKit; a Summit
     // bundle keeps it one level up (<bundle>/lib/libWebKit.so.1).
     std::string directory = library.substr(0, library.rfind('/'));
