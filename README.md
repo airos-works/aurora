@@ -41,6 +41,12 @@ work. The engine comes from `AURORA_WEBKIT_BUNDLE`, from
 shared engine install: `/boot/system/lib/summit-webkit` (a future package) or
 `~/config/non-packaged/lib/summit-webkit`.
 
+pgAdmin 4 runs on Summit's modern engine in its desktop mode. You get its
+native menus and file panels, a second window for its runtime settings, the
+Query Tool against PostgreSQL, and its quit confirmation. Older engines (see
+Building) show windows, menus and dialogs, but pages cannot reach the main
+process there.
+
 An app packaged for Haiku is a folder containing a copy of `aurora-host`
 named after the app, with the app's icon and signature, plus `aurora.json`
 and the app itself. Deskbar starts that copy, which runs the runtime as its

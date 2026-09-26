@@ -59,8 +59,15 @@ engine in `$ORIGIN/webkit/lib`, then in the shared engine install locations
 compiled into its RPATH (see `ENGINE_RPATH` in the Makefile). It sets
 `WEBKIT_EXEC_PATH` itself, to the bundle it loaded, so that WebKit finds
 WebProcess and NetworkProcess. If a private Mesa exists (`AURORA_MESA_LIB`,
-or Summit's `/boot/home/summit-mesa/prefix/lib`), the host restarts itself
-once with that Mesa first in `LIBRARY_PATH`.
+the engine bundle's `mesa/lib`, or Summit's `/boot/home/summit-mesa/prefix/lib`),
+the host restarts itself once with that Mesa first in `LIBRARY_PATH`.
+
+That Mesa's glvnd `libEGL` finds the Mesa driver only through a vendor file
+(`egl_vendor.d/*.json`) in directories fixed when it was built. Without one,
+the web process gets no EGL display and aborts. So the host sets
+`__EGL_VENDOR_LIBRARY_DIRS` to the vendor directory that came with the Mesa,
+or writes a vendor file to `~/config/cache/Aurora/egl_vendor.d`. The engine
+also needs `libepoxy`.
 
 ## A Haiku package
 
