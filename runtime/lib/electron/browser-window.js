@@ -121,6 +121,8 @@ class BrowserWindow extends Emitter {
         systemVersion: require('os').release(),
         // Electron gives a preload all of Node.js only without its sandbox.
         remoteModules: webPreferences.sandbox === false || webPreferences.nodeIntegration === true,
+        // Electron honours app-region drag areas only without its frame.
+        frameless: options.frame === false || (options.titleBarStyle && options.titleBarStyle !== 'default'),
         argv: [process.execPath, ...(Array.isArray(webPreferences.additionalArguments) ? webPreferences.additionalArguments : [])],
       });
       hostOptions.userScripts = [{ source, when: 'start', allFrames: !!webPreferences.nodeIntegrationInSubFrames }];

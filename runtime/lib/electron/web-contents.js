@@ -684,6 +684,18 @@ class WebContents extends Emitter {
       }
       return;
     }
+    case 'window-drag':
+      // A press in the page's app-region: drag area (renderer/bridge.js).
+      reply('null');
+      if (body.dbl) {
+        if (this._window.isMaximized())
+          this._window.unmaximize();
+        else if (this._window.isMaximizable())
+          this._window.maximize();
+      } else {
+        this._window.command('window.beginMove', { x: Number(body.x) || 0, y: Number(body.y) || 0 });
+      }
+      return;
     case 'remote':
       // Asynchronous remote-module requests (releasing references).
       reply('null');

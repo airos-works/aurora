@@ -687,6 +687,86 @@ function bridgeRuntime() {
       }
     }
 
+    // Frameless windows move by their app-region: drag areas. WebKit drops
+    // the property when it parses CSS, so it is read from the page's style
+    // text (style elements, stylesheets, style attributes) instead.
+    if (config.frameless && isTop) {
+      const regionPattern = /(?:-webkit-)?app-region\s*:\s*(no-drag|drag)/i;
+      const selectors = { drag: [], 'no-drag': [] };
+      const scanned = new Set();
+      const scan = (text) => {
+        const rule = /([^{}@;]+)\{([^{}]*)\}/g;
+        let match;
+        while ((match = rule.exec(text))) {
+          const region = regionPattern.exec(match[2]);
+          if (!region)
+            continue;
+          for (const selector of match[1].split(',')) {
+            const trimmed = selector.trim();
+            try {
+              if (trimmed) {
+                document.querySelector(trimmed);
+                selectors[region[1].toLowerCase()].push(trimmed);
+              }
+            } catch {}
+          }
+        }
+      };
+      const scanSheet = (node) => {
+        if (node.tagName === 'STYLE' && !scanned.has(node)) {
+          scanned.add(node);
+          scan(node.textContent || '');
+        } else if (node.tagName === 'LINK' && /stylesheet/i.test(node.rel || '') && node.href && !scanned.has(node.href)) {
+          scanned.add(node.href);
+          fetch(node.href).then((response) => response.text()).then(scan).catch(() => {});
+        }
+      };
+      const watch = () => {
+        document.querySelectorAll('style, link[rel~="stylesheet"]').forEach(scanSheet);
+        new MutationObserver((records) => {
+          for (const record of records) {
+            for (const node of record.addedNodes) {
+              if (node.nodeType !== 1)
+                continue;
+              if (node.matches('style, link'))
+                scanSheet(node);
+              node.querySelectorAll('style, link[rel~="stylesheet"]').forEach(scanSheet);
+            }
+          }
+        }).observe(document.documentElement, { childList: true, subtree: true });
+      };
+      const matches = (node, list) => list.some((selector) => {
+        try {
+          return node.matches(selector);
+        } catch {
+          return false;
+        }
+      });
+      const regionOf = (element) => {
+        for (let node = element; node && node.nodeType === 1; node = node.parentElement) {
+          const inline = regionPattern.exec(node.getAttribute('style') || '');
+          if (inline)
+            return inline[1].toLowerCase();
+          if (matches(node, selectors['no-drag']))
+            return 'no-drag';
+          if (matches(node, selectors.drag))
+            return 'drag';
+        }
+        return null;
+      };
+      if (document.readyState === 'loading')
+        document.addEventListener('DOMContentLoaded', watch, { once: true });
+      else
+        watch();
+      window.addEventListener('mousedown', (event) => {
+        if (event.button !== 0 || regionOf(event.target) !== 'drag')
+          return;
+        event.preventDefault();
+        // Where the press was: the move starts a moment later, elsewhere.
+        post({ t: 'window-drag', dbl: event.detail >= 2, x: event.clientX * zoomFactor, y: event.clientY * zoomFactor }).catch(() => {});
+      }, true);
+    }
+
     if (isTop) {
       // The title as parsed: the engine reports it only after the load ends.
       const ready = () => post({ t: 'dom-ready', title: document.title }).catch(() => {});
@@ -700,9 +780,10 @@ function bridgeRuntime() {
 }
 
 // The complete script for a window. preloadFiles are absolute paths.
-function buildBridgeScript({ preloadFiles = [], token, versions, resourcesPath, systemVersion, remoteModules = false, argv = [] }) {
+function buildBridgeScript({ preloadFiles = [], token, versions, resourcesPath, systemVersion, remoteModules = false, argv = [], frameless = false }) {
   const config = {
     token,
+    frameless: !!frameless,
     remoteModules,
     argv,
     execPath: process.execPath,

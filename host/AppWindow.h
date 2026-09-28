@@ -4,6 +4,7 @@
 
 #include "Protocol.h"
 
+#include <MessageRunner.h>
 #include <Window.h>
 #include <memory>
 
@@ -78,6 +79,9 @@ private:
     BRect fFrameBeforeFullScreen;
     bool fMaximized = false;
     BRect fFrameBeforeMaximize;
+    // Moving a frameless window by its page's drag region (window.beginMove).
+    BMessageRunner* fMoveTicker = nullptr;
+    BPoint fMoveOffset;
     bool fMinimized = false;
     bool fReadyToShowSent = false;
     bool fShowWhenReady = false;

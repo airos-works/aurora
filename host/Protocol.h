@@ -20,6 +20,7 @@ namespace aurora {
 // BMessage codes the host uses internally.
 enum : uint32 {
     kCommandMessage = 'acmd',       // "json": one command from the runtime
+    kMoveTickMessage = 'amov',      // a window following the pointer (window.beginMove)
     kInputClosedMessage = 'aeof',   // the runtime went away
     kMenuItemMessage = 'amnu',      // "window" (int32 id), "item" (string id)
     kPopUpResultMessage = 'apop',

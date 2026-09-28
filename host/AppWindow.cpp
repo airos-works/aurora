@@ -185,6 +185,7 @@ BMessenger AppWindow::ViewMessenger() const
 
 AppWindow::~AppWindow()
 {
+    delete fMoveTicker;
 }
 
 void AppWindow::StartHidden()
@@ -579,6 +580,22 @@ void AppWindow::HandleCommand(const json& command)
         Activate(true);
     } else if (name == "window.blur") {
         Activate(false);
+    } else if (name == "window.beginMove") {
+        // A press in a frameless window's drag region: follow the pointer
+        // until the button is released. Haiku has no system move to start.
+        BPoint where;
+        uint32 buttons = 0;
+        fView->GetMouse(&where, &buttons, false);
+        if (buttons != 0 && !fMaximized && !fFullScreen) {
+            // Anchored where the press was (page coordinates), not where the
+            // pointer has got to by the time this command arrives.
+            BPoint press(NumberOf(command, "x", where.x), NumberOf(command, "y", where.y));
+            fView->ConvertToScreen(&press);
+            fMoveOffset = press - Frame().LeftTop();
+            delete fMoveTicker;
+            BMessage tick(kMoveTickMessage);
+            fMoveTicker = new BMessageRunner(BMessenger(this), &tick, 16000);
+        }
     } else if (name == "window.minimize") {
         Minimize(true);
     } else if (name == "window.restore") {
@@ -725,6 +742,19 @@ void AppWindow::HandleWebContentsCommand(const std::string& name, const json& co
 void AppWindow::MessageReceived(BMessage* message)
 {
     switch (message->what) {
+    case kMoveTickMessage: {
+        BPoint where;
+        uint32 buttons = 0;
+        fView->GetMouse(&where, &buttons, false);
+        if (buttons == 0) {
+            delete fMoveTicker;
+            fMoveTicker = nullptr;
+            return;
+        }
+        fView->ConvertToScreen(&where);
+        MoveTo(where - fMoveOffset);
+        return;
+    }
     case kCommandMessage: {
         json* command = nullptr;
         if (message->FindPointer("command", reinterpret_cast<void**>(&command)) == B_OK && command) {
