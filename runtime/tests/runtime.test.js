@@ -72,7 +72,7 @@ test('menus serialize with roles, labels and ids', () => {
   assert.equal(menu.getMenuItemById('nothing'), null);
 });
 
-test('asar archives unpack beside their unpacked files', () => {
+test('asar archives unpack beside their unpacked files and neighbours', () => {
   const { unpack, readHeader } = require('../lib/asar');
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'aurora-asar-'));
   // A minimal archive with two files, one of them "unpacked".
@@ -93,12 +93,15 @@ test('asar archives unpack beside their unpacked files', () => {
   fs.writeFileSync(archive, Buffer.concat([prefix, pickle, Buffer.from('{"main":"x"}\n'), content]));
   fs.mkdirSync(path.join(directory, 'app.asar.unpacked', 'lib'), { recursive: true });
   fs.writeFileSync(path.join(directory, 'app.asar.unpacked', 'lib', 'native.node'), 'ELF!');
+  fs.writeFileSync(path.join(directory, 'beside.txt'), 'next door');
   assert.equal(readHeader(archive).json.files.lib.files['answer.js'].size, content.length);
   const unpacked = unpack(archive, path.join(directory, 'cache'));
   assert.equal(path.basename(unpacked), 'app.asar');
   assert.equal(fs.readFileSync(path.join(unpacked, 'lib/answer.js'), 'utf8'), content.toString());
   assert.equal(fs.readFileSync(path.join(unpacked, 'lib/native.node'), 'utf8'), 'ELF!');
   assert.equal(JSON.parse(fs.readFileSync(path.join(unpacked, 'package.json'), 'utf8')).main, 'x');
+  // Paths that climb out of the archive reach its neighbours.
+  assert.equal(fs.readFileSync(path.join(unpacked, '..', 'beside.txt'), 'utf8'), 'next door');
   fs.rmSync(directory, { recursive: true, force: true });
 });
 
@@ -120,6 +123,12 @@ test('an ESM app with a preload runs end to end on the mock host', () => {
 
 test('session cookies and clearStorageData reach the host', () => {
   const result = runApp(path.join(__dirname, 'apps/cookies'));
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /^PASS$/m);
+});
+
+test('a tray reports clicks and pops up its menu where it was clicked', () => {
+  const result = runApp(path.join(__dirname, 'apps/tray'));
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.match(result.stdout, /^PASS$/m);
 });

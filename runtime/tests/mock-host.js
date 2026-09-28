@@ -252,10 +252,22 @@ function handle(command) {
     return respond(command, { response: Number(process.env.MOCK_HOST_MESSAGE_RESPONSE || 0), checkboxChecked: false });
   case 'menu.popup':
     respond(command);
+    // A tray's menu, at a point on the screen: choose its first item.
+    if (command.window === -1 && command.x === 5 && command.menu.length)
+      send({ ev: 'menu.click', item: command.menu[0].id, popup: command.req });
     setImmediate(() => send({ ev: 'menu.closed', popup: command.req }));
     return;
   case 'mock.menuClick':
     return;
+  case 'tray.create': {
+    respond(command);
+    const click = { ev: 'tray.click', id: command.id, clicks: 1, x: 5, y: 790, bounds: { x: 0, y: 784, width: 16, height: 16 } };
+    setImmediate(() => {
+      send({ ...click, button: 'left' });
+      send({ ...click, button: 'right' });
+    });
+    return;
+  }
   case 'session.cookies.get': {
     const cookies = jar(command.partition);
     return respond(command, command.url ? cookies.filter((cookie) => cookieForURL(cookie, command.url)) : cookies);

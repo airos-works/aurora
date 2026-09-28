@@ -19,13 +19,13 @@ CXXFLAGS += -std=c++20 -Wall -Wextra -Wno-multichar -Wno-unused-parameter \
 # libWebKit and its ICU (the summit_webkit package, or the same layout
 # non-packaged; a flat non-packaged directory also works).
 ENGINE_RPATH ?= $$ORIGIN/webkit/lib:$$ORIGIN/webkit:/boot/system/lib/summit-webkit/lib:/boot/home/config/non-packaged/lib/summit-webkit/lib:/boot/home/config/non-packaged/lib/summit-webkit
-LIBS = -L$(WEBKIT_BUNDLE)/lib -lWebKit -lbe -ltracker -Wl,-rpath,'$(ENGINE_RPATH)'
+LIBS = -L$(WEBKIT_BUNDLE)/lib -lWebKit -lbe -ltracker -ltranslation -Wl,-rpath,'$(ENGINE_RPATH)'
 
 
 SOURCES = $(wildcard host/*.cpp)
 OBJECTS = $(SOURCES:host/%.cpp=$(BUILD)/%.o)
 
-all: $(BUILD)/aurora-host
+all: $(BUILD)/aurora-host $(BUILD)/aurora-tray
 
 $(BUILD)/%.o: host/%.cpp host/*.h
 	@mkdir -p $(BUILD)
@@ -35,6 +35,15 @@ $(BUILD)/aurora-host: $(OBJECTS) host/aurora-host.rdef
 	$(CXX) -o $@ $(OBJECTS) $(LIBS)
 	rc -o $(BUILD)/aurora-host.rsrc host/aurora-host.rdef
 	xres -o $@ $(BUILD)/aurora-host.rsrc
+	mimeset -f $@
+
+# The Deskbar add-on for Tray icons (host/tray): Deskbar loads it, so it links
+# only libbe.
+$(BUILD)/aurora-tray: host/tray/AuroraTray.cpp host/tray/TrayProtocol.h host/tray/aurora-tray.rdef
+	@mkdir -p $(BUILD)
+	$(CXX) $(CXXFLAGS) -shared -fPIC -o $@ host/tray/AuroraTray.cpp -lbe
+	rc -o $(BUILD)/aurora-tray.rsrc host/tray/aurora-tray.rdef
+	xres -o $@ $(BUILD)/aurora-tray.rsrc
 	mimeset -f $@
 
 clean:

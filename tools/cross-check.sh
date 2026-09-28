@@ -19,7 +19,7 @@ done
 INCLUDES=(-I"$ROOT/host" -I"$ROOT/host/vendor" -I"$STAGE" -idirafter "$HEADERS/posix" -idirafter "$HEADERS" -idirafter "$HEADERS/config")
 for directory in "$HEADERS"/os "$HEADERS"/os/*/ "$HEADERS"/os/add-ons/*/; do INCLUDES+=(-idirafter "$directory"); done
 status=0
-for source in "$ROOT"/host/*.cpp; do
+for source in "$ROOT"/host/*.cpp "$ROOT"/host/tray/*.cpp; do
     echo "== $(basename "$source")"
     "$CROSS" -std=c++20 -fsyntax-only -Wall -Wextra -Wno-multichar -Wno-unused-parameter "${INCLUDES[@]}" "$source" || status=1
 done

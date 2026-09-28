@@ -285,10 +285,16 @@ class Menu extends Emitter {
     const { BrowserWindow } = require('./browser-window');
     // electron-context-menu passes a BrowserWindow here; Electron reads it as {}.
     const settings = options instanceof BrowserWindow ? {} : (options || {});
-    const window = settings.window || BrowserWindow.getFocusedWindow();
+    // screenPosition (Aurora's own, for Tray): no window, a point on the
+    // screen, or the pointer's when null.
+    const fromTray = 'screenPosition' in settings;
+    const window = fromTray ? null : settings.window || BrowserWindow.getFocusedWindow();
     const owner = `popup${nextItemId++}`;
     const fields = { menu: this.items.map((item) => item._serialize(owner)), window: window ? window.id : -1 };
-    if (typeof settings.x === 'number' && typeof settings.y === 'number' && window) {
+    if (fromTray && settings.screenPosition) {
+      fields.x = settings.screenPosition.x;
+      fields.y = settings.screenPosition.y;
+    } else if (typeof settings.x === 'number' && typeof settings.y === 'number' && window) {
       const bounds = window.getContentBounds();
       fields.x = bounds.x + settings.x;
       fields.y = bounds.y + settings.y;

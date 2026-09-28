@@ -6,6 +6,7 @@
 #include "Dialogs.h"
 #include "Embedding.h"
 #include "MenuBuilder.h"
+#include "TrayIcons.h"
 #include "WebsiteData.h"
 
 #include <Beep.h>
@@ -135,6 +136,7 @@ void HostApp::ReadyToRun()
     status_t status = BWebKitInitialize();
     fEngineReady = status == B_OK;
     fWebsiteData = std::make_unique<WebsiteData>(BMessenger(this));
+    fTrayIcons = std::make_unique<TrayIcons>(BMessenger(this));
     be_clipboard->StartWatching(BMessenger(this));
     fDownloadsPath = DirectoryPath(B_USER_DIRECTORY) + "/Downloads";
     SendEvent({ { "ev", "ready" }, { "engine", fEngineReady },
@@ -382,6 +384,8 @@ void HostApp::HandleCommand(json& command)
 #endif
     } else if (name.rfind("session.", 0) == 0) {
         fWebsiteData->Handle(name, command, request, ContextFor(StringOf(command, "partition")));
+    } else if (name.rfind("tray.", 0) == 0) {
+        fTrayIcons->Handle(name, command, request);
     } else if (name == "download.cancel") {
         for (auto& [partition, context] : fContexts)
             context->CancelDownload(static_cast<uint64>(NumberOf(command, "identifier")));
@@ -405,6 +409,7 @@ void HostApp::Exit()
         }
         for (auto& [partition, context] : fContexts)
             context->CancelAllDownloads();
+        fTrayIcons->RemoveAll();
         SetPulseRate(100000);
     }
     static bigtime_t started = system_time();
@@ -490,10 +495,21 @@ void HostApp::MessageReceived(BMessage* message)
         return;
     }
 #endif
-    case kMenuItemMessage:
-        SendEvent({ { "ev", "menu.click" }, { "item", message->GetString("item", "") },
-            { "popup", message->GetUInt64("popup", 0) } });
+    case kMenuItemMessage: {
+        // A pop-up menu outside any window (a tray's): the app's roles are
+        // done here, and a checkbox reports its new state.
+        std::string role = message->GetString("role", "");
+        std::string type = message->GetString("type", "normal");
+        bool checked = type == "checkbox" ? !message->GetBool("was checked", false) : type == "radio";
+        json event = { { "ev", "menu.click" }, { "item", message->GetString("item", "") },
+            { "popup", message->GetUInt64("popup", 0) }, { "checked", checked } };
+        if (!role.empty())
+            event["role"] = role;
+        SendEvent(event);
+        if (role == "quit")
+            PostMessage(B_QUIT_REQUESTED);
         return;
+    }
     case kPopUpResultMessage:
         SendEvent({ { "ev", "menu.closed" }, { "popup", message->GetUInt64("request", 0) } });
         return;
@@ -509,6 +525,10 @@ void HostApp::MessageReceived(BMessage* message)
         ForwardDownload(message);
         return;
     default:
+        if (TrayIcons::IsTrayMessage(message->what)) {
+            fTrayIcons->Received(message);
+            return;
+        }
         BApplication::MessageReceived(message);
     }
 }

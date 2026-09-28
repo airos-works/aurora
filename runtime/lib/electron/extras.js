@@ -40,33 +40,102 @@ class Notification extends Emitter {
   }
 }
 
+// Tray: an icon in Deskbar's tray, which the host's aurora-tray add-on
+// draws. As on Linux, a click is 'click' and a right click shows the context
+// menu.
+const trays = new Map();
+let nextTrayId = 1;
+
+function trayImage(image) {
+  const { nativeImage, NativeImage } = require('./native-image');
+  const value = typeof image === 'string' ? nativeImage.createFromPath(image) : image;
+  return value instanceof NativeImage ? value : nativeImage.createEmpty();
+}
+
 class Tray extends Emitter {
   constructor(image, guid) {
     super();
-    this._image = image;
+    this._id = nextTrayId++;
+    this._image = trayImage(image);
     this._destroyed = false;
     this._toolTip = '';
     this._title = '';
     this._menu = null;
+    this._bounds = { x: 0, y: 0, width: 0, height: 0 };
+    trays.set(this._id, this);
+    this._command('tray.create', { icon: this._icon() });
   }
 
-  destroy() { this._destroyed = true; }
+  _icon() {
+    return this._image.isEmpty() ? '' : this._image.toPNG().toString('base64');
+  }
+
+  _command(name, fields = {}) {
+    if (this._destroyed || !state.host)
+      return;
+    // A host without Deskbar items (or Deskbar not running): the tray stays
+    // invisible, as on a Linux desktop without a status area.
+    state.host.request(name, { id: this._id, ...fields }).catch(() => {});
+  }
+
+  // tray.click from the host.
+  _clicked(message) {
+    if (message.bounds)
+      this._bounds = message.bounds;
+    const event = createEvent({ altKey: false, shiftKey: false, ctrlKey: false, metaKey: false, triggeredByAccelerator: false });
+    const position = { x: message.x, y: message.y };
+    if (message.button === 'right') {
+      this.emit('right-click', event, this._bounds);
+      if (this._menu)
+        this.popUpContextMenu(this._menu, position);
+    } else if (message.button === 'middle') {
+      this.emit('middle-click', event, this._bounds);
+    } else if (message.clicks === 2) {
+      this.emit('double-click', event, this._bounds);
+    } else {
+      this.emit('click', event, this._bounds, position);
+    }
+  }
+
+  destroy() {
+    this._command('tray.destroy');
+    this._destroyed = true;
+    trays.delete(this._id);
+  }
+
   isDestroyed() { return this._destroyed; }
-  setImage(image) { this._image = image; }
+  setImage(image) {
+    this._image = trayImage(image);
+    this._command('tray.set', { icon: this._icon() });
+  }
   setPressedImage() {}
-  setToolTip(toolTip) { this._toolTip = String(toolTip); }
+  setToolTip(toolTip) {
+    this._toolTip = String(toolTip);
+    this._command('tray.set', { toolTip: this._toolTip });
+  }
   setTitle(title) { this._title = String(title); }
   getTitle() { return this._title; }
   setIgnoreDoubleClickEvents() {}
   getIgnoreDoubleClickEvents() { return false; }
-  displayBalloon() {}
+  displayBalloon(options = {}) {
+    if (!this._destroyed)
+      new Notification({ title: options.title, body: options.content }).show();
+  }
   removeBalloon() {}
   focus() {}
-  popUpContextMenu(menu) { (menu || this._menu) && (menu || this._menu).popup(); }
+  popUpContextMenu(menu, position) {
+    const target = menu || this._menu;
+    if (target && !this._destroyed)
+      target.popup({ screenPosition: position || null });
+  }
   closeContextMenu() {}
-  setContextMenu(menu) { this._menu = menu; }
-  getBounds() { return { x: 0, y: 0, width: 0, height: 0 }; }
+  setContextMenu(menu) { this._menu = menu || null; }
+  getBounds() { return { ...this._bounds }; }
   getGUID() { return null; }
+}
+
+function trayClicked(message) {
+  trays.get(message.id)?._clicked(message);
 }
 
 const globalShortcut = {
@@ -315,7 +384,7 @@ class ShareMenu {
 }
 
 module.exports = {
-  Notification, Tray, globalShortcut, powerMonitor, powerSaveBlocker, systemPreferences, autoUpdater,
+  Notification, Tray, trayClicked, globalShortcut, powerMonitor, powerSaveBlocker, systemPreferences, autoUpdater,
   crashReporter, contentTracing, safeStorage, net, netLog, MessageChannelMain, MessagePortMain, utilityProcess,
   webFrameMain, desktopCapturer, BrowserView, WebContentsView, View, ImageView, TouchBar, ShareMenu,
 };

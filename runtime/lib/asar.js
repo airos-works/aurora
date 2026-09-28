@@ -3,7 +3,9 @@
 // Electron apps usually ship their code in resources/app.asar. Aurora does
 // not patch fs to read inside archives; it unpacks each archive once into the
 // cache, into a directory that is itself named app.asar, so that paths the
-// app builds from __dirname or process.resourcesPath still work.
+// app builds from __dirname or process.resourcesPath still work. The
+// directory around it links to the archive's neighbours, so paths that climb
+// out of the archive (Discord's module finds its images in ../app) do too.
 
 const crypto = require('crypto');
 const fs = require('fs');
@@ -66,6 +68,30 @@ function extract(archive, destination) {
   }
 }
 
+// <cache>/<key>/<neighbour> -> the archive's neighbour, for each one.
+function linkNeighbours(archive, resources) {
+  const directory = path.dirname(path.resolve(archive));
+  const own = path.basename(archive);
+  let names;
+  try {
+    names = fs.readdirSync(directory);
+  } catch {
+    return;
+  }
+  for (const name of names) {
+    if (name === own || name === `${own}.unpacked` || name === '.complete')
+      continue;
+    const link = path.join(resources, name);
+    try {
+      fs.lstatSync(link);
+      continue;
+    } catch {}
+    try {
+      fs.symlinkSync(path.join(directory, name), link);
+    } catch {}
+  }
+}
+
 // Returns the directory to run instead of the archive.
 function unpack(archive, cacheRoot) {
   const stat = fs.statSync(archive);
@@ -85,6 +111,7 @@ function unpack(archive, cacheRoot) {
     }
     fs.writeFileSync(marker, new Date().toISOString());
   }
+  linkNeighbours(archive, resources);
   return destination;
 }
 

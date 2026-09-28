@@ -20,6 +20,11 @@ cp "$BUILD/aurora-host" "$STAGE/data/aurora/aurora-host"
 strip --strip-debug "$STAGE/data/aurora/aurora-host"
 xres -o "$STAGE/data/aurora/aurora-host" "$BUILD/aurora-host.rsrc"
 mimeset -f "$STAGE/data/aurora/aurora-host"
+# The Deskbar add-on for Tray icons; Deskbar finds it by its signature.
+cp "$BUILD/aurora-tray" "$STAGE/data/aurora/aurora-tray"
+strip --strip-debug "$STAGE/data/aurora/aurora-tray"
+xres -o "$STAGE/data/aurora/aurora-tray" "$BUILD/aurora-tray.rsrc"
+mimeset -f "$STAGE/data/aurora/aurora-tray"
 cat > "$STAGE/bin/aurora" <<'SCRIPT'
 #!/bin/sh
 # aurora: run an Electron app on Haiku (aurora --help).

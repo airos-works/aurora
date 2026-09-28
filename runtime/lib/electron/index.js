@@ -303,6 +303,7 @@ function attachHost(host) {
   host.on('scheme.request', schemeRequest);
   host.on('menu.click', menuClicked);
   host.on('menu.closed', popupClosed);
+  host.on('tray.click', extras.trayClicked);
   host.on('clipboard.changed', (message) => { state.clipboard = message.clipboard || state.clipboard; });
   host.on('theme.changed', (message) => {
     state.darkMode = !!message.darkMode;

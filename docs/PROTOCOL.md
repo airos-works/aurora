@@ -31,6 +31,7 @@ to stderr, so a library printing to stdout cannot corrupt the stream.
 | `window.center`, `window.setSizeLimits` | `id`, `minWidth`... | |
 | `window.setMenu` | `id`, `menu` (items, `[]` for none) | |
 | `window.setMenuBarVisibility` | `id`, `visible` | |
+| `window.beginMove` | `id`, `x`, `y` (the press, in the window): the window follows the pointer until the button is released | |
 | `window.close` | `id`: runs beforeunload, then closes | |
 | `window.destroy` | `id`: closes at once | |
 | `window.debugViews` | `id` | the view tree with frames |
@@ -55,6 +56,9 @@ to stderr, so a library printing to stdout cannot corrupt the stream.
 | `clipboard.write` | `text`, `html` | |
 | `clipboard.clear`, `clipboard.read` | | `{text, html}` |
 | `notification.show` | `title`, `body`, `tag` | |
+| `tray.create` | `id`, `icon` (PNG or JPEG, base64; empty for none), `toolTip` | null, or an error when Deskbar cannot show it |
+| `tray.set` | `id`, `icon` and/or `toolTip` | |
+| `tray.destroy` | `id` | |
 | `screen.get` | | displays |
 | `download.cancel` | `identifier` | |
 | `session.cookies.get` | `partition`, `url` (empty: every cookie) | `[{name, value, domain, path, secure, httpOnly, session, sameSite, expires}]` |
@@ -103,6 +107,7 @@ otherwise `acceleratorLabel` is shown after the label.
 | `scheme.stopped` | `identifier` |
 | `menu.click` | `window` or `popup`, `item`, `checked`, `role` |
 | `menu.closed` | `popup` |
+| `tray.click` | `id`, `button` (left, right, middle), `clicks`, `x`, `y` (screen), `bounds` (the icon's) |
 | `clipboard.changed` | `clipboard` |
 | `theme.changed` | `darkMode` |
 | `download` | `type` (started, progress, finished), `identifier`, `url`, `path`, `received`, `total`, `state` |
@@ -114,9 +119,25 @@ Every window gets one user script at document start (`runtime/lib/renderer/bridg
 Electron's renderer modules and the window's preload scripts, bundled with the
 files they require. It talks to the main process through the engine's script
 message handler `aurora` (`window.webkit.messageHandlers.aurora`), posting JSON
-text `{t, ch, a, k, top}`: `t` is send, invoke, dom-ready, zoom or
-preload-error, `a` the arguments encoded by `runtime/lib/serialize.js`, `k`
-the window's token. `ipcRenderer.sendSync` is a synchronous request to
+text `{t, ch, a, k, top}`: `t` is send, invoke, dom-ready, zoom,
+preload-error, remote or window-drag, `a` the arguments encoded by
+`runtime/lib/serialize.js`, `k` the window's token. `remote` serves a
+preload's Node.js modules from the main process (`runtime/lib/electron/remote.js`)
+when the window has `sandbox: false` or `nodeIntegration`; `window-drag` is a
+press on an `-webkit-app-region: drag` area of a frameless window. `ipcRenderer.sendSync` is a synchronous request to
 `aurora-ipc://sync/`, a URL scheme every window registers. The main process
 calls into pages with `wc.exec`: `webContents.send` runs
 `window[Symbol.for('aurora.dispatch')](channel, args)`.
+
+## Tray icons
+
+A `Tray` is an item in Deskbar's tray. Deskbar cannot load aurora-host (it
+would bring the engine into Deskbar), so the item is an `AuroraTrayItem`
+from the small `aurora-tray` add-on (`host/tray/`), installed beside the
+runtime in `data/aurora`. The host archives the item with its own messenger,
+the tray id, the icon as a `BBitmap` and the tool tip; Deskbar finds the
+add-on by its signature, `application/x-vnd.aurora-tray`, which the host
+registers for the file it found. The item tells the host its messenger
+(for later icons and tool tips) and sends it clicks; it takes itself out of
+Deskbar when the app quits or dies. A tray's context menu is an ordinary
+`menu.popup` with no window.

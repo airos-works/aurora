@@ -78,6 +78,9 @@ static BMenuItem* BuildItem(const json& item, int32 windowIdentifier)
         if (!role.empty())
             message->AddString("role", role.c_str());
         message->AddString("type", type.c_str());
+        // What a checkbox was when the menu was made: a pop-up's items may be
+        // gone by the time their message is handled.
+        message->AddBool("was checked", BoolOf(item, "checked", false));
         char shortcut = 0;
         uint32 modifiers = 0;
         std::string key = StringOf(item, "key");
