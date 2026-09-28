@@ -205,11 +205,206 @@ function bridgeRuntime() {
     ipcRenderer.sendToHost = (name, ...args) => ipcRenderer.send(name, ...args);
     ipcRenderer.postMessage = (name, message) => ipcRenderer.send(name, message);
 
+    // Remote modules (electron/remote.js): Node.js for preloads that run
+    // without Electron's sandbox, served by the main process.
+    const remote = (() => {
+      const proxies = new Map();          // handle -> WeakRef(proxy)
+      const handles = new WeakMap();      // proxy or copied object -> handle
+      const callbackIds = new WeakMap();  // page function -> id
+      const callbacks = new Map();        // id -> page function
+      const promises = new Map();         // handle -> { resolve, reject }
+      const modules = new Map();
+      let nextCallback = 1;
+      let pending = [];
+      const released = typeof FinalizationRegistry === 'function' ? new FinalizationRegistry((handle) => {
+        pending.push(handle);
+        if (pending.length === 1)
+          setTimeout(() => {
+            const ids = pending;
+            pending = [];
+            post({ t: 'remote', op: 'release', ids }).catch(() => {});
+          }, 1000);
+      }) : null;
+
+      function failure(value) {
+        const error = decode(value);
+        const result = error instanceof Error ? error : new Error(String(error));
+        for (const key of ['code', 'errno', 'syscall', 'path'])
+          if (value && value[key] !== undefined)
+            result[key] = value[key];
+        return result;
+      }
+
+      function request(body) {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', 'aurora-ipc://sync/', false);
+        xhr.setRequestHeader('Content-Type', 'text/plain');
+        body.t = 'remote';
+        body.k = config.token;
+        body.top = isTop;
+        xhr.send(JSON.stringify(body));
+        if (xhr.status !== 200)
+          throw new Error(`Aurora: remote module request failed (${xhr.status})`);
+        const reply = JSON.parse(xhr.responseText);
+        if (reply.e)
+          throw failure(reply.e);
+        return fromMain(reply.v);
+      }
+
+      function proxyFor(handle, callable, name) {
+        const existing = proxies.get(handle);
+        const alive = existing && existing.deref();
+        if (alive)
+          return alive;
+        const target = callable ? function () {} : {};
+        const proxy = new Proxy(target, {
+          get(object, key) {
+            if (typeof key === 'symbol')
+              return key === Symbol.toStringTag ? `Remote${callable ? 'Function' : 'Object'}` : undefined;
+            if (callable && (key === 'call' || key === 'apply' || key === 'bind'))
+              return Function.prototype[key];
+            if (callable && key === 'name')
+              return name;
+            if (key === 'toString')
+              return () => `[remote ${callable ? 'function' : 'object'} ${name || handle}]`;
+            if (key === 'prototype')
+              return object.prototype;
+            return request({ op: 'get', h: handle, p: key });
+          },
+          set(object, key, value) {
+            if (typeof key === 'symbol')
+              return false;
+            request({ op: 'set', h: handle, p: key, v: toMain(value) });
+            return true;
+          },
+          has(object, key) {
+            return typeof key === 'string' && request({ op: 'has', h: handle, p: key });
+          },
+          ownKeys(object) {
+            const keys = request({ op: 'keys', h: handle });
+            if (callable && !keys.includes('prototype'))
+              keys.push('prototype');
+            return keys;
+          },
+          getOwnPropertyDescriptor(object, key) {
+            if (key === 'prototype' && callable)
+              return Reflect.getOwnPropertyDescriptor(object, key);
+            if (typeof key !== 'string' || !request({ op: 'has', h: handle, p: key }))
+              return undefined;
+            return { value: request({ op: 'get', h: handle, p: key }), writable: true, enumerable: true, configurable: true };
+          },
+          apply(object, self, args) {
+            const target = self === undefined || self === null || self === window || self === globalThis ? null : toMain(self);
+            return request({ op: 'apply', h: handle, s: target, a: args.map(toMain) });
+          },
+          construct(object, args) {
+            return request({ op: 'construct', h: handle, a: args.map(toMain) });
+          },
+        });
+        proxies.set(handle, new WeakRef(proxy));
+        handles.set(proxy, handle);
+        if (released)
+          released.register(proxy, handle);
+        return proxy;
+      }
+
+      // Main-process value -> page value.
+      function fromMain(value) {
+        if (value === null || typeof value !== 'object')
+          return value;
+        if (Array.isArray(value))
+          return value.map(fromMain);
+        switch (value.$a) {
+        case 'rf':
+          return proxyFor(value.h, true, value.n);
+        case 'ro':
+          return proxyFor(value.h, false, value.c);
+        case 'rp':
+          return new Promise((resolve, reject) => promises.set(value.h, { resolve, reject }));
+        case 'o': {
+          const result = {};
+          for (const key of Object.keys(value.v))
+            result[key] = fromMain(value.v[key]);
+          if (value.h)
+            handles.set(result, value.h);
+          return result;
+        }
+        case 'arr':
+          return value.v.map(fromMain);
+        case 'e':
+          return failure(value);
+        default:
+          return decode(value);
+        }
+      }
+
+      // Page value -> what the main process decodes.
+      function toMain(value) {
+        if (typeof value === 'function') {
+          if (handles.has(value))
+            return { $a: 'h', h: handles.get(value) };
+          let id = callbackIds.get(value);
+          if (!id) {
+            id = nextCallback++;
+            callbackIds.set(value, id);
+            callbacks.set(id, value);
+          }
+          return { $a: 'cb', i: id };
+        }
+        if (value === null || typeof value !== 'object')
+          return encode(value);
+        if (handles.has(value))
+          return { $a: 'h', h: handles.get(value) };
+        if (Array.isArray(value))
+          return { $a: 'arr', v: value.map(toMain) };
+        const tag = Object.prototype.toString.call(value).slice(8, -1);
+        if (tag === 'Object') {
+          const result = {};
+          for (const key of Object.keys(value))
+            result[key] = toMain(value[key]);
+          return { $a: 'o', v: result };
+        }
+        return encode(value);
+      }
+
+      return {
+        require(request, from) {
+          const key = `${from}\u0000${request}`;
+          if (!modules.has(key))
+            modules.set(key, fromMainRequest(request, from));
+          return modules.get(key);
+        },
+        dispatch(message) {
+          if (message.settle !== undefined) {
+            const waiting = promises.get(message.settle);
+            if (!waiting)
+              return;
+            promises.delete(message.settle);
+            if (message.ok)
+              waiting.resolve(fromMain(message.v));
+            else
+              waiting.reject(failure(message.v));
+          } else if (message.call !== undefined) {
+            const callback = callbacks.get(message.call);
+            if (callback)
+              callback(...(message.a || []).map(fromMain));
+          }
+        },
+      };
+      function fromMainRequest(name, from) {
+        return request({ op: 'require', r: name, f: from });
+      }
+    })();
+
     let zoomFactor = 1;
     Object.defineProperty(window, Symbol.for('aurora.dispatch'), {
       value(name, encodedArgs) {
         if (name === '\u0000zoom') {
           zoomFactor = encodedArgs;
+          return;
+        }
+        if (name === '\u0000remote') {
+          remote.dispatch(encodedArgs);
           return;
         }
         const args = decode(encodedArgs);
@@ -333,10 +528,11 @@ function bridgeRuntime() {
       arch: config.arch,
       versions: config.versions,
       env: {},
-      argv: [],
+      argv: config.argv,
       execArgv: [],
-      pid: 0,
-      sandboxed: true,
+      execPath: config.execPath,
+      pid: config.pid,
+      sandboxed: !config.remoteModules,
       contextIsolated: true,
       isMainFrame: isTop,
       resourcesPath: config.resourcesPath,
@@ -411,6 +607,22 @@ function bridgeRuntime() {
       nativeImage: { createEmpty: () => ({ isEmpty: () => true, toDataURL: () => '' }) },
       shell: { openExternal: (url) => ipcRenderer.invoke('\u0000shell.openExternal', url) },
     };
+    // Without the sandbox, what the page's process lacks comes from the main
+    // process (its environment, say), as a Node.js renderer would see it.
+    let pageProcess = processShim;
+    if (config.remoteModules) {
+      let mainProcess = null;
+      const main = () => (mainProcess || (mainProcess = remote.require('process', '/')));
+      Object.defineProperty(processShim, 'env', { get: () => main().env, set() {}, configurable: true });
+      pageProcess = new Proxy(processShim, {
+        get(target, key) {
+          if (typeof key === 'symbol' || key in target)
+            return target[key];
+          return main()[key];
+        },
+      });
+    }
+
     const runtimeModules = {
       electron, 'electron/renderer': electron, 'electron/common': electron,
       events: EventEmitter,
@@ -420,7 +632,7 @@ function bridgeRuntime() {
         pathToFileURL: (file) => new URL(`file://${encodeURI(file)}`) },
       path: pathShim,
       buffer: { Buffer },
-      process: processShim,
+      process: pageProcess,
       util: { inspect: (value) => { try { return JSON.stringify(value); } catch { return String(value); } },
         promisify: (fn) => (...args) => new Promise((resolve, reject) => fn(...args, (error, value) => (error ? reject(error) : resolve(value)))) },
     };
@@ -433,10 +645,14 @@ function bridgeRuntime() {
           if (Object.prototype.hasOwnProperty.call(runtimeModules, name))
             return runtimeModules[name];
           const target = modules[index][2][request];
-          if (target === -1)
-            throw new Error(`Aurora: module "${request}" is not available to preload scripts`);
-          if (target === undefined || target < 0)
+          if (target === undefined || target < 0) {
+            // Without Electron's sandbox a preload has all of Node.js.
+            if (config.remoteModules)
+              return remote.require(request, modules[index][0]);
+            if (target === -1)
+              throw new Error(`Aurora: module "${request}" is not available to preload scripts`);
             throw new Error(`Aurora: cannot find module "${request}"`);
+          }
           return run(target);
         };
       }
@@ -447,7 +663,7 @@ function bridgeRuntime() {
         const module = { exports: {}, id: file, filename: file, loaded: false };
         cache.set(index, module);
         const directory = file.slice(0, file.lastIndexOf('/')) || '/';
-        factory.call(module.exports, module.exports, requireFrom(index), module, file, directory, processShim, Buffer, window);
+        factory.call(module.exports, module.exports, requireFrom(index), module, file, directory, pageProcess, Buffer, window);
         module.loaded = true;
         return module.exports;
       }
@@ -476,9 +692,13 @@ function bridgeRuntime() {
 }
 
 // The complete script for a window. preloadFiles are absolute paths.
-function buildBridgeScript({ preloadFiles = [], token, versions, resourcesPath, systemVersion }) {
+function buildBridgeScript({ preloadFiles = [], token, versions, resourcesPath, systemVersion, remoteModules = false, argv = [] }) {
   const config = {
     token,
+    remoteModules,
+    argv,
+    execPath: process.execPath,
+    pid: process.pid,
     platform: process.platform,
     arch: process.arch,
     versions,

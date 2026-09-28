@@ -123,6 +123,51 @@ function resolveApp(target) {
   return { appPath: location, main, manifest, resourcesPath };
 }
 
+// What an app expects of the Electron it was built for, set by its launcher
+// (aurora.json "env"):
+// - AURORA_EXEC_PATH: process.execPath and app.getPath('exe'). Apps that
+//   find their install from the executable (Discord's updater does) see the
+//   launcher; Node.js children still start from the real node.
+// - AURORA_PLATFORM: process.platform and os.platform(), for an app with no
+//   case for "haiku" (Discord's Linux build is the nearest).
+// - AURORA_NATIVE_SHIMS: a directory of JavaScript stand-ins for native
+//   modules, <name>.js for <name>.node.
+function applyAppOverrides() {
+  const { state } = require('./electron/common');
+  state.nodePath = process.execPath;
+  if (process.env.AURORA_EXEC_PATH)
+    process.execPath = path.resolve(process.env.AURORA_EXEC_PATH);
+  const platform = process.env.AURORA_PLATFORM;
+  if (platform) {
+    Object.defineProperty(process, 'platform', { value: platform, enumerable: true, configurable: true });
+    require('os').platform = () => platform;
+  }
+  installNativeModuleLoader(process.env.AURORA_NATIVE_SHIMS);
+}
+
+// Native modules: a stand-in when the app ships one, and otherwise a module
+// built for another system (a Linux .node) fails as a missing module, which
+// apps treat as optional, instead of as a crash.
+function installNativeModuleLoader(shims) {
+  const load = Module._extensions['.node'];
+  Module._extensions['.node'] = function loadNative(module, filename) {
+    if (shims) {
+      const shim = path.join(shims, `${path.basename(filename, '.node')}.js`);
+      if (fs.existsSync(shim)) {
+        module.exports = require(shim);
+        return;
+      }
+    }
+    try {
+      return load(module, filename);
+    } catch (error) {
+      const missing = new Error(`Cannot find module '${filename}': it is not a native module for ${process.env.AURORA_PLATFORM || 'this system'} (${error.message})`);
+      missing.code = 'MODULE_NOT_FOUND';
+      throw missing;
+    }
+  };
+}
+
 function installModuleHooks() {
   const cjsEntry = path.join(__dirname, 'electron', 'electron.js');
   const esmEntry = pathToFileURL(path.join(__dirname, 'electron', 'esm.mjs')).href;
@@ -228,6 +273,7 @@ function start() {
   process.versions.aurora = AURORA_VERSION;
   process.type = 'browser';
   process.resourcesPath = app.resourcesPath;
+  applyAppOverrides();
   process.defaultApp = options.dev || undefined;
   process.argv = options.dev
     ? [process.execPath, app.appPath, ...options.appArgs]

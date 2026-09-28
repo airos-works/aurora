@@ -264,6 +264,8 @@ const utilityProcess = {
     const child = require('child_process').fork(modulePath, args, {
       cwd: options.cwd, env: options.env || process.env, execArgv: options.execArgv, stdio: options.stdio === 'pipe' ? 'pipe' : 'inherit',
       serialization: 'advanced',
+      // Node.js itself, not an app's launcher standing in for process.execPath.
+      execPath: state.nodePath || process.execPath,
     });
     const handle = new Emitter();
     Object.assign(handle, {

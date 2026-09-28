@@ -684,6 +684,11 @@ class WebContents extends Emitter {
       }
       return;
     }
+    case 'remote':
+      // Asynchronous remote-module requests (releasing references).
+      reply('null');
+      this._remoteObjects().request(body);
+      return;
     case 'dom-ready':
       reply('null');
       if (body.top !== false && typeof body.title === 'string' && body.title)
@@ -747,6 +752,8 @@ class WebContents extends Emitter {
   _syncMessage(body, request) {
     if (body.k !== this._window._bridgeToken)
       return { v: encode(undefined) };
+    if (body.t === 'remote')
+      return this._remoteObjects().request(body);
     const event = this._ipcEvent({ frameUrl: this._url, origin: '' }, body);
     const args = decode(body.a) || [];
     this.emit('ipc-message-sync', event, body.ch, ...args);
@@ -755,9 +762,19 @@ class WebContents extends Emitter {
     return { v: encode(event.returnValue) };
   }
 
+  // Node.js modules served to this page's preload scripts (remote.js).
+  _remoteObjects() {
+    if (!this._remote) {
+      const { RemoteObjects } = require('./remote');
+      this._remote = new RemoteObjects(this);
+    }
+    return this._remote;
+  }
+
   _destroy() {
     if (this._destroyed)
       return;
+    this._remote = null;
     this._destroyed = true;
     for (const pending of this._pendingLoads.splice(0))
       pending.reject(new Error('The window was closed'));

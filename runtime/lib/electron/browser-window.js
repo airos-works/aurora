@@ -119,6 +119,9 @@ class BrowserWindow extends Emitter {
         versions: { ...process.versions },
         resourcesPath: process.resourcesPath,
         systemVersion: require('os').release(),
+        // Electron gives a preload all of Node.js only without its sandbox.
+        remoteModules: webPreferences.sandbox === false || webPreferences.nodeIntegration === true,
+        argv: [process.execPath, ...(Array.isArray(webPreferences.additionalArguments) ? webPreferences.additionalArguments : [])],
       });
       hostOptions.userScripts = [{ source, when: 'start', allFrames: !!webPreferences.nodeIntegrationInSubFrames }];
       this._preloadFiles = files;

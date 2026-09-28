@@ -1,0 +1,6 @@
+{
+  "name": "aurora-remote-test",
+  "version": "1.0.0",
+  "main": "main.js",
+  "description": "Needs a real engine (synchronous requests): run it in Haiku, not on the mock host."
+}
