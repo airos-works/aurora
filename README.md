@@ -47,6 +47,11 @@ Query Tool against PostgreSQL, and its quit confirmation. Older engines (see
 Building) show windows, menus and dialogs, but pages cannot reach the main
 process there.
 
+Discord's own desktop client also runs, unmodified, up to its login screen
+(`docs/DISCORD.md`). Its installer, `ports/discord`, downloads the client from
+Discord's servers onto the user's machine. Voice and video need Discord's
+closed-source Linux libraries, so they do not work.
+
 An app packaged for Haiku is a folder containing a copy of `aurora-host`
 named after the app, with the app's icon and signature, plus `aurora.json`
 and the app itself. Deskbar starts that copy, which runs the runtime as its
@@ -58,6 +63,7 @@ its Python server.
 - **Supported:**
   - **Windows:** `app` lifecycle and quit rules, paths, the single-instance
     lock and relaunch; `BrowserWindow` with options, events and state;
+    frameless windows that move by their `-webkit-app-region: drag` areas;
     `webContents` loading, navigation, events, `executeJavaScript`, `send`,
     zoom, find and edit commands, and `setWindowOpenHandler` with scriptable
     `window.open` children.
@@ -68,13 +74,16 @@ its Python server.
     menus and pop-ups; `dialog` (Tracker file panels and alerts, including the
     *Sync variants); `<input type=file>` panels.
   - **System services:** `clipboard`, `shell`, `screen`, `nativeTheme`,
-    `Notification`, `protocol.handle` and custom schemes, downloads,
-    `safeStorage`, `net.fetch`, `utilityProcess`.
+    `Notification`, `Tray` (an icon in Deskbar's tray with its context
+    menu), `protocol.handle` and custom schemes, downloads, `safeStorage`,
+    `net.fetch`, `utilityProcess`.
+  - **Node.js in preloads:** a window with `sandbox: false` or
+    `nodeIntegration` gets the Node.js modules its preload requires, served
+    from the main process.
   - **Sessions:** partitions, `session.cookies` (get, set and remove,
     HttpOnly included) and `clearStorageData`/`clearCache`/`clearData`. An
     origin limits clearing to that origin's cookies.
-- **Present but inert:** `webRequest` hooks, `Tray`,
-  `globalShortcut`, `powerMonitor`, `autoUpdater` (packages update through
+- **Present but inert:** `webRequest` hooks, `globalShortcut`, `powerMonitor`, `autoUpdater` (packages update through
   pkgman), `crashReporter`, DevTools.
 - **Not available:** `BrowserView`/`WebContentsView`, `desktopCapturer`,
   printing, native Node modules built for Linux (rebuild them for Haiku), and
