@@ -1,0 +1,20 @@
+/* The Discord launcher: aurora-host with Discord's name, icon and signature,
+   written by install-discord into <root>/app-<version>/Discord. Multiple
+   launch: Discord's own single-instance lock decides, and its updater starts
+   a new host's launcher before the old one has quit. */
+
+resource app_signature "application/x-vnd.discord-desktop";
+
+resource app_flags B_MULTIPLE_LAUNCH;
+
+resource app_version {
+	major  = 1,
+	middle = 0,
+	minor  = 0,
+	variety = B_APPV_FINAL,
+	internal = 0,
+	short_info = "Discord",
+	long_info = "Discord's desktop client, running on Aurora"
+};
+
+resource(101, "BEOS:ICON") #'VICN' import "Discord.hvif";

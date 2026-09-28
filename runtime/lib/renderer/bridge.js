@@ -49,12 +49,17 @@ function bundle(entry) {
         const name = normalizeBuiltin(request);
         if (RUNTIME_MODULES.has(name) || dependencies[request] !== undefined)
           continue;
-        if (builtinModules.includes(name)) {
+        if (builtinModules.includes(name) || name === 'original-fs') {
           dependencies[request] = -1;
           continue;
         }
         try {
           const resolved = require.resolve(request, { paths: [path.dirname(file)] });
+          // A name that resolves to a builtin (an alias) is one too.
+          if (!path.isAbsolute(resolved)) {
+            dependencies[request] = -1;
+            continue;
+          }
           dependencies[request] = add(resolved);
         } catch {
           dependencies[request] = -2;
@@ -631,7 +636,8 @@ function bridgeRuntime() {
       url: { URL, URLSearchParams, fileURLToPath: (url) => decodeURIComponent(new URL(url).pathname),
         pathToFileURL: (file) => new URL(`file://${encodeURI(file)}`) },
       path: pathShim,
-      buffer: { Buffer },
+      buffer: { Buffer, constants: { MAX_LENGTH: 2 ** 32, MAX_STRING_LENGTH: 2 ** 29 - 24 }, kMaxLength: 2 ** 32,
+        kStringMaxLength: 2 ** 29 - 24, atob, btoa, Blob: window.Blob, File: window.File },
       process: pageProcess,
       util: { inspect: (value) => { try { return JSON.stringify(value); } catch { return String(value); } },
         promisify: (fn) => (...args) => new Promise((resolve, reject) => fn(...args, (error, value) => (error ? reject(error) : resolve(value)))) },
@@ -675,7 +681,9 @@ function bridgeRuntime() {
         load(modules);
       } catch (error) {
         console.error('Aurora: the preload script failed:', error);
-        post({ t: 'preload-error', m: String(error && error.stack || error) }).catch(() => {});
+        // WebKit's stack has no message line.
+        const text = error instanceof Error ? `${error.name}: ${error.message}\n${error.stack || ''}` : String(error);
+        post({ t: 'preload-error', m: text }).catch(() => {});
       }
     }
 

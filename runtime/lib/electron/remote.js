@@ -88,6 +88,10 @@ class RemoteObjects {
       return errorOf(value);
     if (isLeaf(value))
       return encodeData(value);
+    // A Proxy (a stand-in module that answers any name) must stay live, and
+    // must not be asked for .then first.
+    if (require('util').types.isProxy(value))
+      return { $a: 'ro', h: this.handle(value), c: 'Proxy' };
     if (typeof value.then === 'function')
       return this.promise(value);
     if (seen.has(value) || depth > MAX_DEPTH)

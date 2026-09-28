@@ -70,6 +70,11 @@ class App extends Emitter {
     return state.appInfo.version;
   }
 
+  // Undocumented in Electron, but apps call it (Discord sets its host version).
+  setVersion(version) {
+    state.appInfo.version = String(version);
+  }
+
   getAppPath() {
     return state.appInfo.appPath;
   }
@@ -362,8 +367,29 @@ class App extends Emitter {
       cpu: { percentCPUUsage: 0, idleWakeupsPerSecond: 0, cumulativeCPUUsage: (usage.user + usage.system) / 1e6 },
       memory: { workingSetSize: Math.round(process.memoryUsage().rss / 1024), peakWorkingSetSize: 0 }, sandboxed: false }];
   }
-  getGPUFeatureStatus() { return {}; }
-  getGPUInfo() { return Promise.resolve({}); }
+  // Chromium's shapes: apps walk gpuDevice and read feature states. WebKit
+  // composites with Mesa (llvmpipe), which Chromium would report as software.
+  getGPUFeatureStatus() {
+    const software = 'enabled';
+    return { '2d_canvas': software, canvas_oop_rasterization: 'disabled_off', gpu_compositing: software,
+      multiple_raster_threads: 'enabled_on', opengl: 'enabled_on', rasterization: software,
+      raw_draw: 'disabled_off', skia_graphite: 'disabled_off', video_decode: 'unavailable_software',
+      video_encode: 'unavailable_software', vulkan: 'disabled_off', webgl: software, webgl2: software, webgpu: 'disabled_off' };
+  }
+  getGPUInfo(infoType = 'basic') {
+    const info = {
+      auxAttributes: { amdSwitchable: false, canSupportThreadedTextureMailbox: false, glRenderer: 'llvmpipe',
+        glVendor: 'Mesa', glVersion: '', inProcessGpu: true, optimus: false, sandboxed: false, softwareRendering: true },
+      gpuDevice: [{ active: true, cudaComputeCapabilityMajor: 0, deviceId: 0, driverVendor: 'Mesa', driverVersion: '',
+        gpuPreference: 0, revision: 0, subSysId: 0, vendorId: 0 }],
+      machineModelName: '',
+      machineModelVersion: '',
+    };
+    if (infoType === 'complete')
+      Object.assign(info, { featureStatus: this.getGPUFeatureStatus(), videoDecodeAcceleratorSupportedProfile: [],
+        videoEncodeAcceleratorSupportedProfile: [] });
+    return Promise.resolve(info);
+  }
   getLoginItemSettings() { return { openAtLogin: false, openAsHidden: false, wasOpenedAtLogin: false, wasOpenedAsHidden: false, restoreState: false, executableWillLaunchAtLogin: false, launchItems: [] }; }
   setLoginItemSettings() {}
   isAccessibilitySupportEnabled() { return this._accessibility; }

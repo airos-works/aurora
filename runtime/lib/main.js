@@ -8,7 +8,7 @@
 const fs = require('fs');
 const Module = require('module');
 const path = require('path');
-const { pathToFileURL } = require('url');
+const { pathToFileURL, fileURLToPath } = require('url');
 
 const AURORA_VERSION = require('../package.json').version;
 const DEFAULT_ELECTRON_VERSION = '43.4.0';
@@ -168,6 +168,27 @@ function installNativeModuleLoader(shims) {
   };
 }
 
+// require() into an .asar archive, which Electron reads in place (Discord's
+// modules are "require('./core.asar')"): the archive is unpacked once into
+// the cache, and the request resolves there.
+function resolveAsar(request, parentFile) {
+  if (typeof request !== 'string' || !/\.asar(\/|$)/.test(request))
+    return null;
+  const base = path.isAbsolute(request) ? request
+    : (request.startsWith('.') && parentFile ? path.resolve(path.dirname(parentFile), request) : null);
+  const match = base && base.match(/^(.*?\.asar)(\/.*)?$/);
+  if (!match)
+    return null;
+  try {
+    if (!fs.statSync(match[1]).isFile())
+      return null;
+  } catch {
+    return null;
+  }
+  const unpacked = require('./asar').unpack(match[1], path.join(cacheRoot(), 'asar'));
+  return match[2] ? path.join(unpacked, match[2]) : unpacked;
+}
+
 function installModuleHooks() {
   const cjsEntry = path.join(__dirname, 'electron', 'electron.js');
   const esmEntry = pathToFileURL(path.join(__dirname, 'electron', 'esm.mjs')).href;
@@ -182,6 +203,10 @@ function installModuleHooks() {
         }
         if (specifier === 'original-fs')
           return nextResolve('node:fs', context);
+        const parent = context.parentURL && context.parentURL.startsWith('file:') ? fileURLToPath(context.parentURL) : null;
+        const inAsar = resolveAsar(specifier, parent);
+        if (inAsar)
+          return nextResolve(inAsar, context);
         return nextResolve(specifier, context);
       },
     });
@@ -193,6 +218,10 @@ function installModuleHooks() {
       return cjsEntry;
     if (request === 'original-fs')
       return 'fs';
+    const parent = rest[0];
+    const inAsar = resolveAsar(request, parent && parent.filename);
+    if (inAsar)
+      return resolveFilename.call(this, inAsar, ...rest);
     return resolveFilename.call(this, request, ...rest);
   };
   if (typeof Module.register === 'function')
