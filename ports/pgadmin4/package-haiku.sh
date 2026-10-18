@@ -10,7 +10,9 @@ OUT=${3:?output directory}
 REVISION=2
 ARCH=$(uname -m)
 STAGE=$(mktemp -d "${TMPDIR:-/tmp}/pgadmin-package.XXXXXX")
-trap 'rm -rf "$STAGE"' EXIT
+# Outside the stage, or the package would install it in /boot/system.
+RESOURCES=$(mktemp "${TMPDIR:-/tmp}/pgadmin-launcher.XXXXXX")
+trap 'rm -rf "$STAGE" "$RESOURCES"' EXIT
 
 mkdir -p "$STAGE/apps/pgAdmin4" "$STAGE/data/deskbar/menu/Applications" "$STAGE/data/licenses"
 # Not the engine a development build may link to: the package uses Summit's.
@@ -33,9 +35,9 @@ find "$SITE/pgadmin4" -name '*.js.map' -delete
 find "$TARGET/venv" -name '*.so' -exec strip --strip-debug {} +
 # The launcher: strip drops its resources (signature, icon), so keep them.
 LAUNCHER="$TARGET/pgAdmin 4"
-xres -o "$STAGE/launcher.rsrc" "$LAUNCHER"
+xres -o "$RESOURCES" "$LAUNCHER"
 strip --strip-debug "$LAUNCHER"
-xres -o "$LAUNCHER" "$STAGE/launcher.rsrc"
+xres -o "$LAUNCHER" "$RESOURCES"
 mimeset -f "$LAUNCHER"
 # The package is read-only: compile once, and never check the sources again.
 "$TARGET/venv/bin/python3" -m compileall -q -j 0 --invalidation-mode unchecked-hash \
