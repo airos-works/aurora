@@ -1,10 +1,13 @@
 #!/bin/bash
-# Make pgadmin4-<version>-1-<arch>.hpkg from the app folder build-haiku.sh made:
+# Make pgadmin4-<version>-<revision>-<arch>.hpkg from the app folder build-haiku.sh made:
 #   ports/pgadmin4/package-haiku.sh <app folder> <version> <output directory>
 set -euo pipefail
 APP=$(cd -- "${1:?app folder}" && pwd)
 VERSION=${2:?version}
 OUT=${3:?output directory}
+# The package's revision: raise it for a new package of the same pgAdmin
+# (pkgman does not replace an installed package with an equal version).
+REVISION=2
 ARCH=$(uname -m)
 STAGE=$(mktemp -d "${TMPDIR:-/tmp}/pgadmin-package.XXXXXX")
 trap 'rm -rf "$STAGE"' EXIT
@@ -41,7 +44,7 @@ ln -s "../../../../apps/pgAdmin4/pgAdmin 4" "$STAGE/data/deskbar/menu/Applicatio
 cp "$APP/LICENSE" "$STAGE/data/licenses/pgAdmin"
 cat > "$STAGE/.PackageInfo" <<INFO
 name			pgadmin4
-version			$VERSION-1
+version			$VERSION-$REVISION
 architecture	$ARCH
 summary			"The administration and development platform for PostgreSQL"
 description		"pgAdmin 4 is the most popular and feature rich open source administration \
@@ -71,5 +74,5 @@ requires {
 }
 INFO
 mkdir -p "$OUT"
-package create -C "$STAGE" "$OUT/pgadmin4-$VERSION-1-$ARCH.hpkg"
-echo "$OUT/pgadmin4-$VERSION-1-$ARCH.hpkg"
+package create -C "$STAGE" "$OUT/pgadmin4-$VERSION-$REVISION-$ARCH.hpkg"
+echo "$OUT/pgadmin4-$VERSION-$REVISION-$ARCH.hpkg"

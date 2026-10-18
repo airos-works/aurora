@@ -99,6 +99,12 @@ make WEBKIT_BUNDLE=/path/to/older/bundle LEGACY_ENGINE=1   # engines before 2026
 tools/package-haiku.sh                                     # aurora-*.hpkg
 ```
 
+air/OS CI ([jmgasper/airos-ci](https://github.com/jmgasper/airos-ci),
+`build_aurora`) cross-builds the same package on every push to `main`
+(`.github/workflows/airos.yml`), and the x86_64 air/OS images include it with
+HaikuPorts' Node.js 22. Raise `REVISION` in `tools/package-haiku.sh` for a new
+package of the same version.
+
 The runtime is plain JavaScript (Node.js 20.6 or later). Its tests run on any
 machine, against a mock host that speaks the host's protocol:
 

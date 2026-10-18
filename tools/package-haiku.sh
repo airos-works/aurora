@@ -1,5 +1,5 @@
 #!/bin/bash
-# Make aurora-<version>-1-<arch>.hpkg on Haiku from a built tree:
+# Make aurora-<version>-<revision>-<arch>.hpkg on Haiku from a built tree:
 #   make WEBKIT_BUNDLE=... && tools/package-haiku.sh [output directory]
 # Installs the runtime in data/aurora, the host beside it and `aurora` and
 # `electron` commands; the WebKit engine is Summit's summit_webkit package,
@@ -9,6 +9,9 @@ ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 OUT=${1:-$ROOT/build}
 BUILD=${BUILD:-$ROOT/build}
 VERSION=$(sed -n 's/.*"version": "\(.*\)".*/\1/p' "$ROOT/runtime/package.json" | head -1)
+# The package's revision: raise it for a new package of the same version
+# (pkgman does not replace an installed package with an equal version).
+REVISION=2
 ARCH=$(uname -m)
 STAGE=$(mktemp -d "${TMPDIR:-/tmp}/aurora-package.XXXXXX")
 trap 'rm -rf "$STAGE"' EXIT
@@ -35,7 +38,7 @@ ln -s aurora "$STAGE/bin/electron"
 cp "$ROOT/README.md" "$ROOT/LICENSE" "$STAGE/documentation/packages/aurora/" 2>/dev/null || cp "$ROOT/LICENSE" "$STAGE/documentation/packages/aurora/"
 cat > "$STAGE/.PackageInfo" <<INFO
 name			aurora
-version			$VERSION-1
+version			$VERSION-$REVISION
 architecture	$ARCH
 summary			"Runs Electron apps on Haiku with the system WebKit engine"
 description		"Aurora runs apps written for Electron: Node.js is the main process, and the \
@@ -58,5 +61,5 @@ requires {
 }
 INFO
 mkdir -p "$OUT"
-package create -C "$STAGE" "$OUT/aurora-$VERSION-1-$ARCH.hpkg"
-echo "$OUT/aurora-$VERSION-1-$ARCH.hpkg"
+package create -C "$STAGE" "$OUT/aurora-$VERSION-$REVISION-$ARCH.hpkg"
+echo "$OUT/aurora-$VERSION-$REVISION-$ARCH.hpkg"

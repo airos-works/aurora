@@ -1,0 +1,19 @@
+# Builds the air/OS package (x86_64) on every push to main and publishes it to the rolling
+# "latest" release, with links in the README; the x86_64 image builds take it from the package pool.
+# The pipeline itself lives in jmgasper/airos-ci (apps/build-app-packages.sh, build_aurora).
+name: air/OS build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  airos:
+    uses: jmgasper/airos-ci/.github/workflows/app.yml@main
+    with:
+      app: aurora
+      repo-dir: aurora
+      architectures: x86_64
+    permissions:
+      contents: write
