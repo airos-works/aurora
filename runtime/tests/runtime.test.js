@@ -132,3 +132,22 @@ test('a tray reports clicks and pops up its menu where it was clicked', () => {
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.match(result.stdout, /^PASS$/m);
 });
+
+test('an app started without PATH or HOME gets Haiku\'s defaults', () => {
+  const app = fs.mkdtempSync(path.join(os.tmpdir(), 'aurora-env-'));
+  fs.writeFileSync(path.join(app, 'package.json'), JSON.stringify({ name: 'aurora-env-test', main: 'main.js' }));
+  fs.writeFileSync(path.join(app, 'main.js'), `
+    const { app } = require('electron');
+    console.log('PATH=' + process.env.PATH);
+    console.log('HOME=' + process.env.HOME);
+    app.whenReady().then(() => app.quit());
+  `);
+  // The mock host finds node through PATH (#!/usr/bin/env node): name it.
+  const host = path.join(app, 'mock-host');
+  fs.writeFileSync(host, `#!/bin/sh\nexec "${process.execPath}" "${MOCK_HOST}" "$@"\n`, { mode: 0o755 });
+  const result = runApp(app, { PATH: '', HOME: '', AURORA_HOST: host });
+  fs.rmSync(app, { recursive: true, force: true });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /^PATH=.*:\/bin:/m);
+  assert.match(result.stdout, /^HOME=\/.+/m);
+});

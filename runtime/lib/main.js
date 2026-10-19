@@ -133,6 +133,7 @@ function resolveApp(target) {
 // - AURORA_NATIVE_SHIMS: a directory of JavaScript stand-ins for native
 //   modules, <name>.js for <name>.node.
 function applyAppOverrides() {
+  completeEnvironment();
   const { state } = require('./electron/common');
   state.nodePath = process.execPath;
   if (process.env.AURORA_EXEC_PATH)
@@ -144,6 +145,25 @@ function applyAppOverrides() {
   }
   installNativeModuleLoader(process.env.AURORA_NATIVE_SHIMS);
   installWatchFallback();
+}
+
+// An app the roster starts from a server (not from Deskbar or a shell) can
+// have no PATH or HOME: the app's children (git, ssh, open) need both, as
+// Haiku's shells set them (/boot/system/boot/SetupEnvironment).
+function completeEnvironment() {
+  if (!process.env.HOME) {
+    // os.homedir() answers HOME itself while it is set, even empty.
+    try {
+      process.env.HOME = require('os').userInfo().homedir;
+    } catch {
+      process.env.HOME = '/boot/home';
+    }
+  }
+  if (!process.env.PATH) {
+    const home = process.env.HOME;
+    process.env.PATH = [`${home}/config/non-packaged/bin`, `${home}/config/bin`, `${home}/config/apps`,
+      '/boot/system/non-packaged/bin', '/bin', '/boot/system/apps', '/boot/system/preferences'].join(':');
+  }
 }
 
 // Node.js has no fs.watch on Haiku (libuv answers ENOSYS). There a watched

@@ -1,6 +1,7 @@
 'use strict';
 
 // shell: Haiku's `open` hands URLs and files to their preferred applications.
+// The commands are named by path: an app the roster starts may have no PATH.
 
 const { spawn, execFileSync } = require('child_process');
 const fs = require('fs');
@@ -9,7 +10,7 @@ const { state } = require('./common');
 
 function open(target) {
   return new Promise((resolve, reject) => {
-    const child = spawn('open', [target], { stdio: 'ignore', detached: true });
+    const child = spawn('/bin/open', [target], { stdio: 'ignore', detached: true });
     child.on('error', reject);
     child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`open exited with status ${code}`))));
     child.unref();
@@ -18,7 +19,7 @@ function open(target) {
 
 function trashDirectory() {
   try {
-    return execFileSync('finddir', ['B_TRASH_DIRECTORY'], { encoding: 'utf8' }).trim();
+    return execFileSync('/bin/finddir', ['B_TRASH_DIRECTORY'], { encoding: 'utf8' }).trim();
   } catch {
     return path.join(process.env.HOME || '/boot/home', 'Desktop', 'Trash');
   }
