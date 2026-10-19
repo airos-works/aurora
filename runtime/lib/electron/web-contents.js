@@ -491,11 +491,26 @@ class WebContents extends Emitter {
     this.send(channel, message);
   }
 
+  // Messages for the page go in one script per turn of the event loop, in
+  // order: a stream's data can come in many small chunks.
   _dispatch(channel, payload) {
     if (this._destroyed)
       return;
-    const code = `(() => { const dispatch = window[Symbol.for('aurora.dispatch')];`
-      + ` if (dispatch) dispatch(${JSON.stringify(channel)}, ${JSON.stringify(payload)}); })()`;
+    if (!this._dispatchQueue) {
+      this._dispatchQueue = [];
+      setImmediate(() => this._flushDispatches());
+    }
+    this._dispatchQueue.push(`[${JSON.stringify(channel)}, ${JSON.stringify(payload)}]`);
+  }
+
+  _flushDispatches() {
+    const queue = this._dispatchQueue;
+    this._dispatchQueue = null;
+    if (this._destroyed || !queue || !queue.length)
+      return;
+    const code = `(() => { const dispatch = window[Symbol.for('aurora.dispatch')]; if (!dispatch) return;`
+      + ` for (const [channel, payload] of [${queue.join(',')}]) { try { dispatch(channel, payload); }`
+      + ` catch (error) { setTimeout(() => { throw error; }); } } })()`;
     state.host.send('wc.exec', { id: this.id, code, req: 0 });
   }
 
