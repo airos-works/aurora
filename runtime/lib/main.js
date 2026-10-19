@@ -145,22 +145,31 @@ function applyAppOverrides() {
   installNativeModuleLoader(process.env.AURORA_NATIVE_SHIMS);
 }
 
-// Native modules: a stand-in when the app ships one, and otherwise a module
-// built for another system (a Linux .node) fails as a missing module, which
-// apps treat as optional, instead of as a crash.
+// Native modules: a stand-in when the app ships one; then the module itself;
+// then Aurora's own stand-in for a module that cannot load on Haiku
+// (lib/shims: keytar). Otherwise a module built for another system (a Linux
+// .node) fails as a missing module, which apps treat as optional, instead of
+// as a crash.
 function installNativeModuleLoader(shims) {
   const load = Module._extensions['.node'];
+  const shimFor = (directory, filename) => {
+    const shim = directory && path.join(directory, `${path.basename(filename, '.node')}.js`);
+    return shim && fs.existsSync(shim) ? shim : null;
+  };
   Module._extensions['.node'] = function loadNative(module, filename) {
-    if (shims) {
-      const shim = path.join(shims, `${path.basename(filename, '.node')}.js`);
-      if (fs.existsSync(shim)) {
-        module.exports = require(shim);
-        return;
-      }
+    const appShim = shimFor(shims, filename);
+    if (appShim) {
+      module.exports = require(appShim);
+      return;
     }
     try {
       return load(module, filename);
     } catch (error) {
+      const ownShim = shimFor(path.join(__dirname, 'shims'), filename);
+      if (ownShim) {
+        module.exports = require(ownShim);
+        return;
+      }
       const missing = new Error(`Cannot find module '${filename}': it is not a native module for ${process.env.AURORA_PLATFORM || 'this system'} (${error.message})`);
       missing.code = 'MODULE_NOT_FOUND';
       throw missing;

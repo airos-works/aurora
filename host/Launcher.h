@@ -19,4 +19,8 @@ namespace aurora {
 // pipes; false when there is no aurora.json or this host is the runtime's child.
 bool StartRuntimeIfLauncher(int argc, char** argv);
 
+// Whether this host is a packaged app's launcher (StartRuntimeIfLauncher
+// started the runtime): only a launcher can be started again for a link.
+bool IsLauncher();
+
 } // namespace aurora

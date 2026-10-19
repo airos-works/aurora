@@ -222,12 +222,34 @@ function bridgeRuntime() {
     // channel of the page's own, as fast as Node.js's.
     const immediates = new Map();
     let nextImmediate = 1;
+    // A page function that throws when the main process (or setImmediate)
+    // calls it: WebKit would report only "Script error." for a throw out of
+    // this script, so without the sandbox the renderer's process hears it
+    // with its details, as in Electron.
+    function reportUncaught(error) {
+      if (!config.remoteModules)
+        throw error;
+      try {
+        if (processShim.listenerCount('uncaughtException') > 0) {
+          processShim.emit('uncaughtException', error, 'uncaughtException');
+          return;
+        }
+      } catch (handlerError) {
+        error = handlerError;
+      }
+      console.error('Uncaught', error);
+    }
+
     const runImmediate = (id) => {
       const entry = immediates.get(id);
       if (!entry)
         return;
       immediates.delete(id);
-      entry.callback(...entry.args);
+      try {
+        entry.callback(...entry.args);
+      } catch (error) {
+        reportUncaught(error);
+      }
     };
     const immediateChannel = typeof MessageChannel === 'function' ? new MessageChannel() : null;
     if (immediateChannel)
@@ -458,8 +480,8 @@ function bridgeRuntime() {
         if (alive)
           return alive;
         const handle = value.h;
-        const record = { handle, isStream: value.$a === 'st', subscribed: new Set(), flowing: false, ended: false,
-          closed: false, proxy: null, target: null };
+        const record = { handle, isStream: value.$a === 'st', readable: !!value.r, subscribed: new Set(), flowing: false,
+          ended: false, closed: false, proxy: null, target: null };
         const target = record.isStream ? streamTarget(record, value) : new node.events.EventEmitter();
         record.target = target;
         const local = record.isStream ? STREAM_LOCAL : EMITTER_LOCAL;
@@ -567,12 +589,12 @@ function bridgeRuntime() {
         }
         switch (name) {
         case 'data':
-          if (!target.destroyed)
+          if (record.readable && !target.destroyed)
             target.push(args[0]);
           break;
         case 'end':
           record.ended = true;
-          if (!target.destroyed)
+          if (record.readable && !target.destroyed)
             target.push(null);
           break;
         case 'error':
@@ -585,7 +607,7 @@ function bridgeRuntime() {
           if (target.destroyed)
             break;
           // What was read but not consumed stays readable.
-          if (target.readable) {
+          if (record.readable && target.readable) {
             if (!record.ended)
               target.push(null);
             target.once('end', () => target.destroy());
@@ -736,16 +758,20 @@ function bridgeRuntime() {
     let zoomFactor = 1;
     Object.defineProperty(window, Symbol.for('aurora.dispatch'), {
       value(name, encodedArgs) {
-        if (name === '\u0000zoom') {
-          zoomFactor = encodedArgs;
-          return;
+        try {
+          if (name === '\u0000zoom') {
+            zoomFactor = encodedArgs;
+            return;
+          }
+          if (name === '\u0000remote') {
+            remote.dispatch(encodedArgs);
+            return;
+          }
+          const args = decode(encodedArgs);
+          ipcRenderer.emit(name, { sender: ipcRenderer, senderId: 0, ports: [] }, ...args);
+        } catch (error) {
+          reportUncaught(error);
         }
-        if (name === '\u0000remote') {
-          remote.dispatch(encodedArgs);
-          return;
-        }
-        const args = decode(encodedArgs);
-        ipcRenderer.emit(name, { sender: ipcRenderer, senderId: 0, ports: [] }, ...args);
       },
     });
 
@@ -978,6 +1004,11 @@ function bridgeRuntime() {
       });
       for (const name of ['clipboard', 'shell', 'nativeImage'])
         Object.defineProperty(electron, name, { get: () => remote.electron(name), enumerable: true, configurable: true });
+      // A native module (webpack's node loaders call this) loads in the main
+      // process, where Aurora's stand-ins for Haiku apply.
+      processShim.dlopen = (module, filename) => {
+        module.exports = remote.require(String(filename), '/');
+      };
       node = nodePolyfills ? nodePolyfills(pageProcess) : null;
     }
     const Buffer = node ? node.buffer.Buffer : LiteBuffer;
@@ -1011,6 +1042,7 @@ function bridgeRuntime() {
         } });
       const path = Object.assign({}, node.path);
       path.posix = path;
+      path.win32 = node.pathWin32;
       const url = Object.assign({}, node.url, runtimeModules.url,
         { domainToASCII: node.punycode.toASCII, domainToUnicode: node.punycode.toUnicode });
       const buffer = Object.assign({}, node.buffer, { kStringMaxLength: 2 ** 29 - 24,
@@ -1097,6 +1129,26 @@ function bridgeRuntime() {
         } catch {}
       }
     }
+    // A file: page's workers. WebKit makes each file its own origin, so such a
+    // page cannot start a worker from its own files (Electron can): the
+    // script's text, read here, goes in a blob of the page's origin instead.
+    if (config.nodeIntegration && isTop && location.protocol === 'file:' && typeof Worker === 'function') {
+      const PageWorker = window.Worker;
+      const AuroraWorker = function Worker(url, options) {
+        let resolved = null;
+        try {
+          resolved = new URL(String(url), location.href);
+        } catch {}
+        if (!resolved || resolved.protocol !== 'file:' || (options && options.type === 'module'))
+          return new PageWorker(url, options);
+        const source = remote.require('fs', '/').readFileSync(decodeURIComponent(resolved.pathname), 'utf8');
+        const blob = new Blob([`${source}\n//# sourceURL=${resolved.href}\n`], { type: 'text/javascript' });
+        return new PageWorker(URL.createObjectURL(blob), options);
+      };
+      AuroraWorker.prototype = PageWorker.prototype;
+      Object.defineProperty(window, 'Worker', { value: AuroraWorker, writable: true, configurable: true });
+    }
+
     // Electron reports a page's uncaught errors on the renderer's process.
     if (config.remoteModules && isTop) {
       window.addEventListener('error', (event) => {
@@ -1201,6 +1253,35 @@ function bridgeRuntime() {
       }, true);
     }
 
+    // AURORA_PAGE_CONSOLE=1: the page's console and uncaught errors go to the
+    // main process (webContents 'console-message', and its stderr).
+    if (config.console) {
+      const text = (value) => {
+        if (value instanceof Error)
+          return `${value.name}: ${value.message}\n${value.stack || ''}`;
+        if (typeof value === 'object' && value !== null) {
+          try {
+            return JSON.stringify(value);
+          } catch {}
+        }
+        return String(value);
+      };
+      for (const level of ['debug', 'log', 'info', 'warn', 'error']) {
+        const original = console[level];
+        console[level] = function auroraConsole(...args) {
+          post({ t: 'console', level, m: args.map(text).join(' ') }).catch(() => {});
+          return original.apply(this, args);
+        };
+      }
+      window.addEventListener('error', (event) => {
+        post({ t: 'console', level: 'error', m: `Uncaught ${text(event.error || event.message)}`, line: event.lineno,
+          source: event.filename }).catch(() => {});
+      });
+      window.addEventListener('unhandledrejection', (event) => {
+        post({ t: 'console', level: 'error', m: `Unhandled rejection ${text(event.reason)}` }).catch(() => {});
+      });
+    }
+
     if (isTop) {
       // The title as parsed: the engine reports it only after the load ends.
       const ready = () => post({ t: 'dom-ready', title: document.title }).catch(() => {});
@@ -1230,6 +1311,7 @@ function buildBridgeScript({ preloadFiles = [], token, versions, resourcesPath, 
     resourcesPath,
     systemVersion,
     navigatorPlatform: `Haiku ${process.arch === 'arm64' ? 'aarch64' : 'x86_64'}`,
+    console: process.env.AURORA_PAGE_CONSOLE === '1',
   };
   // A Node.js renderer inherits the main process's environment and directory.
   if (config.remoteModules) {

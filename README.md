@@ -47,6 +47,12 @@ Query Tool against PostgreSQL, and its quit confirmation. Older engines (see
 Building) show windows, menus and dialogs, but pages cannot reach the main
 process there.
 
+GitHub Desktop runs as a Haiku app: its fork
+([jmgasper/desktop](https://github.com/jmgasper/desktop), branch `haiku`)
+builds a package that uses Haiku's own Git. Its pages have Node.js
+(`nodeIntegration`), its credentials go to Haiku's key store, and the
+browser hands it back the sign-in link.
+
 Discord's own desktop client also runs, unmodified, up to its login screen
 (`docs/DISCORD.md`). Its installer, `ports/discord`, downloads the client from
 Discord's servers onto the user's machine. Voice and video need Discord's
@@ -77,9 +83,24 @@ its Python server.
     `Notification`, `Tray` (an icon in Deskbar's tray with its context
     menu), `protocol.handle` and custom schemes, downloads, `safeStorage`,
     `net.fetch`, `utilityProcess`.
-  - **Node.js in preloads:** a window with `sandbox: false` or
-    `nodeIntegration` gets the Node.js modules its preload requires, served
-    from the main process.
+  - **Node.js in pages:** a window with `sandbox: false` or
+    `nodeIntegration` gets the Node.js modules its preload requires; with
+    `nodeIntegration` and no `contextIsolation`, the page's own scripts get
+    `require`, `module`, `process`, `Buffer`, `global`, `setImmediate` and
+    `__dirname`, as webpack's `electron-renderer` bundles expect. Pure
+    JavaScript modules (Buffer, streams, events, util, path, url, assert)
+    are the page's own (`runtime/lib/renderer/node-polyfills.js`); fs,
+    child_process, net, crypto and the rest are the main process's, with
+    child processes, sockets and servers as emitters and streams of the page.
+    A `file:` page starts its workers from its own files, and a native
+    module loads in the main process (`process.dlopen`).
+  - **Native module stand-ins:** keytar keeps passwords in Haiku's key store
+    (`runtime/lib/shims/keytar.js`, through the host, which keystore_server
+    knows as the app); `AURORA_NATIVE_SHIMS` adds an app's own.
+  - **Links:** `app.setAsDefaultProtocolClient` makes a packaged app the
+    preferred application for its scheme's links, which browsers offer; the
+    link starts the app again, and the first instance gets it through
+    `second-instance`.
   - **Sessions:** partitions, `session.cookies` (get, set and remove,
     HttpOnly included) and `clearStorageData`/`clearCache`/`clearData`. An
     origin limits clearing to that origin's cookies.
@@ -106,7 +127,8 @@ HaikuPorts' Node.js 22. Raise `REVISION` in `tools/package-haiku.sh` for a new
 package of the same version.
 
 The runtime is plain JavaScript (Node.js 20.6 or later). Its tests run on any
-machine, against a mock host that speaks the host's protocol:
+machine, against a mock host that speaks the host's protocol (`npm test` in
+`runtime` also runs the page side of Node.js integration in a vm context):
 
 ```sh
 cd runtime
@@ -115,8 +137,12 @@ AURORA_HOST=$PWD/tests/mock-host.js node lib/main.js tests/apps/basic
 
 On Linux, `tools/cross-check.sh` compile-checks the host with the Haiku cross
 compiler. `docs/PROTOCOL.md` describes the runtime–host protocol.
-`AURORA_TRACE=1` logs it, and `AURORA_REPL=<socket>` with
+`AURORA_TRACE=1` logs it, `AURORA_TRACE_REMOTE=1` the pages' Node.js
+requests, `AURORA_PAGE_CONSOLE=1` copies pages' console messages and
+uncaught errors to stderr, and `AURORA_REPL=<socket>` with
 `runtime/tools/aurora-repl.js` evaluates expressions in a running app.
+`runtime/tools/node-polyfills/build.sh` regenerates the pages' Node.js
+modules from pinned npm packages.
 
 ## Licence
 

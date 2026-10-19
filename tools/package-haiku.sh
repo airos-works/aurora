@@ -11,7 +11,7 @@ BUILD=${BUILD:-$ROOT/build}
 VERSION=$(sed -n 's/.*"version": "\(.*\)".*/\1/p' "$ROOT/runtime/package.json" | head -1)
 # The package's revision: raise it for a new package of the same version
 # (pkgman does not replace an installed package with an equal version).
-REVISION=2
+REVISION=1
 ARCH=$(uname -m)
 STAGE=$(mktemp -d "${TMPDIR:-/tmp}/aurora-package.XXXXXX")
 trap 'rm -rf "$STAGE"' EXIT
@@ -43,8 +43,9 @@ architecture	$ARCH
 summary			"Runs Electron apps on Haiku with the system WebKit engine"
 description		"Aurora runs apps written for Electron: Node.js is the main process, and the \
 app's windows are native Haiku windows drawn by Summit's WebKit engine. Pages get \
-Electron's preload scripts, ipcRenderer and contextBridge; menus, dialogs, the \
-clipboard and notifications are Haiku's own."
+Electron's preload scripts, ipcRenderer and contextBridge, and Node.js with \
+nodeIntegration; menus, dialogs, the clipboard, notifications and the key store \
+are Haiku's own."
 packager		"KunanyiOS contributors"
 vendor			"KunanyiOS"
 copyrights		{ "2026 KunanyiOS contributors" }

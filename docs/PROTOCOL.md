@@ -66,6 +66,9 @@ to stderr, so a library printing to stdout cannot corrupt the stream.
 | `session.cookies.remove` | `partition`, `url`, `name` (empty: all of the URL's) | null |
 | `session.clearData` | `partition`, `types` (engine B_WEBKIT_DATA_* bits: 1 cookies, 2 cache, 4 local storage, 8 IndexedDB, 16 service workers) | null |
 | `app.beep`, `app.quit` | | |
+| `app.protocolClient` | `scheme`, `op`: set, remove or query (a launcher sets itself as the preferred app of `application/x-vnd.Be.URL.<scheme>`) | true or false |
+| `keystore.get` / `keystore.set` / `keystore.delete` | `service`, `account`, `password` (set): a password key in the master keyring, identifier `service`, secondary identifier `account` | the password or null / null / whether one was removed |
+| `keystore.find` | `service` | `[{account, password}]` |
 
 Window `options`: `title`, `x`, `y`, `width`, `height`, `min/maxWidth/Height`,
 `resizable`, `minimizable`, `maximizable`, `closable`, `focusable`,
@@ -120,11 +123,18 @@ Electron's renderer modules and the window's preload scripts, bundled with the
 files they require. It talks to the main process through the engine's script
 message handler `aurora` (`window.webkit.messageHandlers.aurora`), posting JSON
 text `{t, ch, a, k, top}`: `t` is send, invoke, dom-ready, zoom,
-preload-error, remote or window-drag, `a` the arguments encoded by
+preload-error, remote, console or window-drag, `a` the arguments encoded by
 `runtime/lib/serialize.js`, `k` the window's token. `remote` serves a
-preload's Node.js modules from the main process (`runtime/lib/electron/remote.js`)
-when the window has `sandbox: false` or `nodeIntegration`; `window-drag` is a
-press on an `-webkit-app-region: drag` area of a frameless window. `ipcRenderer.sendSync` is a synchronous request to
+page's Node.js modules from the main process (`runtime/lib/electron/remote.js`)
+when the window has `sandbox: false` or `nodeIntegration`: synchronous
+requests (require, get, set, apply, construct, write, end) and asynchronous
+ones (ack, sub, flow, destroy, abort, release). Emitters and streams the page
+receives have their events held until the page acks them, then the events it
+subscribed to arrive, in the order they happened, with promise settlements
+and callbacks (`{ev, n, a}`, `{settle}`, `{call}` through `aurora.dispatch`).
+`console` carries the page's console (`AURORA_PAGE_CONSOLE=1`);
+`window-drag` is a press on an `-webkit-app-region: drag` area of a frameless
+window. `ipcRenderer.sendSync` is a synchronous request to
 `aurora-ipc://sync/`, a URL scheme every window registers. The main process
 calls into pages with `wc.exec`: `webContents.send` runs
 `window[Symbol.for('aurora.dispatch')](channel, args)`.

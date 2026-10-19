@@ -5,6 +5,8 @@
 #include "AppWindow.h"
 #include "Dialogs.h"
 #include "Embedding.h"
+#include "Keychain.h"
+#include "Launcher.h"
 #include "MenuBuilder.h"
 #include "TrayIcons.h"
 #include "WebsiteData.h"
@@ -15,6 +17,7 @@
 #include <Directory.h>
 #include <FindDirectory.h>
 #include <Menu.h>
+#include <MimeType.h>
 #include <MenuItem.h>
 #include <Notification.h>
 #include <Path.h>
@@ -87,6 +90,46 @@ std::string DirectoryPath(directory_which which)
 {
     BPath path;
     return find_directory(which, &path) == B_OK ? path.Path() : "";
+}
+
+// Electron's app.setAsDefaultProtocolClient and isDefaultProtocolClient:
+// Haiku opens a link of a scheme with the preferred application of the MIME
+// type application/x-vnd.Be.URL.<scheme>, which browsers offer. Only a
+// launcher can be that application: it starts the app again with the link,
+// which the first instance receives (requestSingleInstanceLock).
+json ProtocolClient(const json& command)
+{
+    std::string scheme = StringOf(command, "scheme");
+    for (char& character : scheme)
+        character = static_cast<char>(tolower(static_cast<unsigned char>(character)));
+    if (scheme.empty() || !isalpha(static_cast<unsigned char>(scheme[0]))
+        || scheme.find_first_not_of("abcdefghijklmnopqrstuvwxyz0123456789+.-") != std::string::npos)
+        return false;
+    app_info info;
+    if (be_app->GetAppInfo(&info) != B_OK)
+        return false;
+    BMimeType type(("application/x-vnd.Be.URL." + scheme).c_str());
+    if (type.InitCheck() != B_OK)
+        return false;
+    char preferred[B_MIME_TYPE_LENGTH] = "";
+    bool isOurs = type.GetPreferredApp(preferred) == B_OK && !strcasecmp(preferred, info.signature);
+    std::string operation = StringOf(command, "op", "query");
+    if (operation == "query" || !IsLauncher())
+        return isOurs;
+    if (operation == "set") {
+        if (!type.IsInstalled() && type.Install() != B_OK)
+            return false;
+        BString description;
+        if (type.GetShortDescription(description.LockBuffer(B_MIME_TYPE_LENGTH)) != B_OK)
+            description.UnlockBuffer(0);
+        else
+            description.UnlockBuffer();
+        if (description.IsEmpty())
+            type.SetShortDescription((scheme + " link").c_str());
+        return type.SetPreferredApp(info.signature) == B_OK;
+    }
+    // remove: give the scheme back to nobody, if it is ours.
+    return isOurs && type.SetPreferredApp(nullptr) == B_OK;
 }
 
 } // namespace
@@ -345,6 +388,10 @@ void HostApp::HandleCommand(json& command)
         SendResponse(request, nullptr);
     } else if (name == "clipboard.read") {
         SendResponse(request, ReadClipboard());
+    } else if (name == "app.protocolClient") {
+        SendResponse(request, ProtocolClient(command));
+    } else if (name.rfind("keystore.", 0) == 0) {
+        HandleKeyStoreCommand(command, request);
     } else if (name == "notification.show") {
         ShowNotification(command);
         SendResponse(request, nullptr);

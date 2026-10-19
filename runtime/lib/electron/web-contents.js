@@ -727,6 +727,15 @@ class WebContents extends Emitter {
       if (body.v > 0)
         this.setZoomFactor(body.v);
       return;
+    case 'console': {
+      // The page's console (AURORA_PAGE_CONSOLE=1, renderer/bridge.js).
+      reply('null');
+      const levels = { debug: 0, log: 1, info: 1, warn: 2, error: 3 };
+      const level = levels[body.level] !== undefined ? levels[body.level] : 1;
+      this.emit('console-message', createEvent(), level, String(body.m), Number(body.line) || 0, String(body.source || ''));
+      process.stderr.write(`[page ${this.id} ${body.level}] ${body.m}\n`);
+      return;
+    }
     case 'preload-error':
       reply('null');
       this.emit('preload-error', createEvent(), '', new Error(body.m));

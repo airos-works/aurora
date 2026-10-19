@@ -30,6 +30,9 @@ const { encode: encodeData } = require('../serialize');
 const BLOCKED_KEYS = new Set(['constructor', '__proto__', 'prototype', '__defineGetter__', '__defineSetter__',
   '__lookupGetter__', '__lookupSetter__', 'caller', 'callee', 'arguments']);
 const MAX_PLAIN_KEYS = 400;
+// AURORA_TRACE_REMOTE=1 logs the page's requests and the events it is sent.
+const TRACE = process.env.AURORA_TRACE_REMOTE === '1';
+const trace = (...parts) => process.stderr.write(`[aurora remote] ${parts.join(' ')}\n`);
 const MAX_DEPTH = 4;
 // Events always forwarded: the page's side of a stream keeps its state from
 // them, and a closed emitter is one the page may let go.
@@ -95,13 +98,37 @@ class RemoteObjects {
     this.objects = new Map();
     this.ids = new WeakMap();
     this.nextId = 1;
-    // Stubs for page functions, held weakly: when the stub is collected the
-    // page may forget its function too.
+    // Stubs for page functions, held weakly: one nothing here calls any more
+    // goes, and the page's function gets a new stub if it comes again.
     this.callbacks = new Map();
-    this.droppedCallbacks = [];
-    this.callbackRegistry = new FinalizationRegistry((id) => this.dropCallback(id));
+    this.callbackRegistry = new FinalizationRegistry((id) => {
+      const existing = this.callbacks.get(id);
+      if (existing && !existing.deref())
+        this.callbacks.delete(id);
+    });
     this.emitters = new Map();
     this.signals = new Map();
+    // What goes to the page while some emitter's events are held, in the
+    // order it happened: a child's 'close' must not overtake its output.
+    this.queue = [];
+  }
+
+  // A message for the page, in order with held events.
+  dispatch(message) {
+    if (this.queue.length)
+      this.queue.push({ record: null, message });
+    else
+      this.contents._dispatch('\u0000remote', message);
+  }
+
+  drain() {
+    while (this.queue.length && (!this.queue[0].record || this.queue[0].record.acknowledged)) {
+      const { record, name, args, message } = this.queue.shift();
+      if (!record)
+        this.contents._dispatch('\u0000remote', message);
+      else if (record.subscribed.has(name) && this.emitters.get(record.id) === record)
+        this.sendEvent(record, name, args);
+    }
   }
 
   // A reference the page can use: the same object always has the same id.
@@ -198,8 +225,8 @@ class RemoteObjects {
   promise(thenable) {
     const id = this.handle(thenable);
     Promise.resolve(thenable).then(
-      (value) => this.contents._dispatch('\u0000remote', { settle: id, ok: true, v: this.toPage(value) }),
-      (error) => this.contents._dispatch('\u0000remote', { settle: id, ok: false, v: errorOf(error) }));
+      (value) => this.dispatch({ settle: id, ok: true, v: this.toPage(value) }),
+      (error) => this.dispatch({ settle: id, ok: false, v: errorOf(error) }));
     return { $a: 'rp', h: id };
   }
 
@@ -222,7 +249,7 @@ class RemoteObjects {
   }
 
   watch(id, emitter, isAStream) {
-    const record = { id, emitter, subscribed: new Set(isAStream ? STREAM_EVENTS : EMITTER_EVENTS), held: [],
+    const record = { id, emitter, subscribed: new Set(isAStream ? STREAM_EVENTS : EMITTER_EVENTS),
       acknowledged: false, flowing: false, children: [] };
     // The page handles errors (or reports them); none may end this process.
     record.onError = () => {};
@@ -261,8 +288,10 @@ class RemoteObjects {
   forward(record, name, args) {
     if (LOCAL_EVENTS.has(name))
       return;
-    if (!record.acknowledged) {
-      record.held.push([name, args]);
+    if (!record.acknowledged || this.queue.length) {
+      if (TRACE)
+        trace('hold', record.id, name);
+      this.queue.push({ record, name, args });
       return;
     }
     if (record.subscribed.has(name))
@@ -270,6 +299,8 @@ class RemoteObjects {
   }
 
   sendEvent(record, name, args) {
+    if (TRACE)
+      trace('event', record.id, name);
     let encoded;
     try {
       encoded = args.map((arg) => this.toPage(arg));
@@ -284,11 +315,6 @@ class RemoteObjects {
     if (!record || record.acknowledged)
       return;
     record.acknowledged = true;
-    const held = record.held;
-    record.held = [];
-    for (const [name, args] of held)
-      if (record.subscribed.has(name))
-        this.sendEvent(record, name, args);
     for (const child of record.children)
       this.acknowledge(child);
   }
@@ -317,6 +343,9 @@ class RemoteObjects {
       return;
     this.emitters.delete(id);
     record.restore();
+    // Its held events go nowhere now.
+    record.acknowledged = true;
+    this.drain();
   }
 
   // Page value -> main-process value.
@@ -358,27 +387,12 @@ class RemoteObjects {
     if (!stub) {
       const objects = this;
       stub = function auroraPageCallback(...args) {
-        objects.contents._dispatch('\u0000remote', { call: id, a: args.map((arg) => objects.toPage(arg)) });
+        objects.dispatch({ call: id, a: args.map((arg) => objects.toPage(arg)) });
       };
       this.callbacks.set(id, new WeakRef(stub));
       this.callbackRegistry.register(stub, id);
     }
     return stub;
-  }
-
-  dropCallback(id) {
-    const existing = this.callbacks.get(id);
-    if (existing && existing.deref())
-      return;
-    this.callbacks.delete(id);
-    this.droppedCallbacks.push(id);
-    if (this.droppedCallbacks.length === 1)
-      setTimeout(() => {
-        const ids = this.droppedCallbacks;
-        this.droppedCallbacks = [];
-        if (!this.contents.isDestroyed())
-          this.contents._dispatch('\u0000remote', { drop: ids });
-      }, 1000).unref();
   }
 
   // A page AbortSignal: the page reports its abort.
@@ -396,6 +410,8 @@ class RemoteObjects {
 
   // One synchronous request from the page.
   request(body) {
+    if (TRACE)
+      trace('op', body.op, body.h !== undefined ? body.h : '', body.p || body.r || body.n || (body.ids ? body.ids.join(',') : ''));
     try {
       return { v: this.perform(body) };
     } catch (error) {
@@ -456,6 +472,7 @@ class RemoteObjects {
     case 'ack':
       for (const id of body.ids || [])
         this.acknowledge(id);
+      this.drain();
       return { $a: 'u' };
     case 'sub':
       this.subscribe(body.h, String(body.n));

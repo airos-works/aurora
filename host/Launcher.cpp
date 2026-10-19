@@ -36,6 +36,13 @@ static std::string Resolve(const std::string& directory, const std::string& path
     return directory + "/" + path;
 }
 
+static bool sIsLauncher = false;
+
+bool IsLauncher()
+{
+    return sIsLauncher;
+}
+
 bool StartRuntimeIfLauncher(int argc, char** argv)
 {
     if (getenv("AURORA_HOST_CHILD"))
@@ -104,6 +111,7 @@ bool StartRuntimeIfLauncher(int argc, char** argv)
     close(commands[1]);
     close(events[0]);
     SetProtocolDescriptors(commands[0], events[1]);
+    sIsLauncher = true;
     return true;
 }
 

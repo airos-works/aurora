@@ -341,9 +341,28 @@ class App extends Emitter {
   addRecentDocument() {}
   clearRecentDocuments() {}
   getRecentDocuments() { return []; }
-  setAsDefaultProtocolClient() { return false; }
-  removeAsDefaultProtocolClient() { return false; }
-  isDefaultProtocolClient() { return false; }
+  // Links of a scheme open with the app's launcher (host: app.protocolClient),
+  // which starts the app with the link: a second instance passes it to the
+  // first through 'second-instance'. Only a packaged app has a launcher.
+  setAsDefaultProtocolClient(protocol) {
+    if (!process.env.AURORA_HOST_FDS || !state.host)
+      return false;
+    this._protocolClients = this._protocolClients || new Set();
+    this._protocolClients.add(String(protocol).toLowerCase());
+    state.host.request('app.protocolClient', { scheme: String(protocol), op: 'set' }).catch(() => {});
+    return true;
+  }
+
+  removeAsDefaultProtocolClient(protocol) {
+    if (!this._protocolClients || !this._protocolClients.delete(String(protocol).toLowerCase()))
+      return false;
+    state.host.request('app.protocolClient', { scheme: String(protocol), op: 'remove' }).catch(() => {});
+    return true;
+  }
+
+  isDefaultProtocolClient(protocol) {
+    return !!this._protocolClients && this._protocolClients.has(String(protocol).toLowerCase());
+  }
   getApplicationNameForProtocol() { return ''; }
   getApplicationInfoForProtocol() { return Promise.reject(new Error('Not available on Haiku')); }
   setUserTasks() { return false; }
@@ -423,17 +442,31 @@ const app = new App();
 // would otherwise leave them (pgAdmin's Python server, for one) running.
 function trackChildren() {
   const childProcess = require('child_process');
+  const { promisify } = require('util');
+  const track = (child, args) => {
+    const options = args.find((value) => value && typeof value === 'object' && !Array.isArray(value)) || {};
+    if (child && !options.detached) {
+      children.add(child);
+      child.once('exit', () => children.delete(child));
+    }
+  };
   for (const name of ['spawn', 'fork', 'execFile', 'exec']) {
     const original = childProcess[name];
     childProcess[name] = function tracked(...args) {
       const child = original.apply(this, args);
-      const options = args.find((value) => value && typeof value === 'object' && !Array.isArray(value)) || {};
-      if (child && !options.detached) {
-        children.add(child);
-        child.once('exit', () => children.delete(child));
-      }
+      track(child, args);
       return child;
     };
+    // util.promisify(execFile) resolves to { stdout, stderr } through this.
+    const custom = original[promisify.custom];
+    if (typeof custom === 'function')
+      Object.defineProperty(childProcess[name], promisify.custom, {
+        value: function trackedPromise(...args) {
+          const promise = custom.apply(this, args);
+          track(promise.child, args);
+          return promise;
+        },
+      });
   }
 }
 

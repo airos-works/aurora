@@ -9,6 +9,8 @@ module.exports = {
   buffer: require('buffer/'),
   events: require('events/'),
   path: require('path-browserify'),
+  // path-browserify has no win32; Node.js 0.12's path module does.
+  pathWin32: require('path/path.js').win32,
   punycode: require('punycode/'),
   querystring: require('querystring-es3'),
   stream,
