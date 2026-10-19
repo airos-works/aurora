@@ -705,6 +705,9 @@ function bridgeRuntime() {
         if (Array.isArray(value))
           return { $a: 'arr', v: value.map(toMain) };
         const tag = Object.prototype.toString.call(value).slice(8, -1);
+        // Node.js takes URLs where it takes paths (fs) and URL strings (http).
+        if (tag === 'URL' && typeof value.href === 'string')
+          return { $a: 'url', v: value.href };
         if (tag === 'Object') {
           const result = {};
           for (const key of Object.keys(value))

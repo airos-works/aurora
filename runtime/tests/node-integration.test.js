@@ -101,14 +101,15 @@ test('fs answers with Buffers, Stats and Dirents of the page', async () => {
     const fs = require('fs');
     const Path = require('path');
     const bytes = fs.readFileSync(Path.join(directory, 'a.txt'));
+    const viaURL = fs.readFileSync(new URL('file://' + Path.join(directory, 'a.txt')), 'utf8');
     const stats = await require('fs/promises').stat(directory);
     const entries = await fs.promises.readdir(directory, { withFileTypes: true });
     let missing = null;
     try { fs.statSync(Path.join(directory, 'nope')); } catch (error) { missing = error.code; }
-    return { isBuffer: Buffer.isBuffer(bytes), text: bytes.toString('utf8'), isDirectory: stats.isDirectory(),
+    return { isBuffer: Buffer.isBuffer(bytes), text: bytes.toString('utf8') + '/' + viaURL, isDirectory: stats.isDirectory(),
       mtime: stats.mtime instanceof Date, entries: entries.map((entry) => entry.name + ':' + entry.isDirectory()).sort(), missing };
   })()`);
-  assert.deepEqual(result, { isBuffer: true, text: 'hello', isDirectory: true, mtime: true,
+  assert.deepEqual(result, { isBuffer: true, text: 'hello/hello', isDirectory: true, mtime: true,
     entries: ['a.txt:false', 'sub:true'], missing: 'ENOENT' });
   fs.rmSync(directory, { recursive: true, force: true });
 });

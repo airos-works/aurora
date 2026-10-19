@@ -361,6 +361,8 @@ class RemoteObjects {
       return this.callback(value.i);
     case 'sig':
       return this.signal(value.i, value.ab, value.r);
+    case 'url':
+      return new URL(value.v);
     case 'o': {
       const result = {};
       for (const [key, item] of Object.entries(value.v))
