@@ -143,6 +143,49 @@ function applyAppOverrides() {
     require('os').platform = () => platform;
   }
   installNativeModuleLoader(process.env.AURORA_NATIVE_SHIMS);
+  installWatchFallback();
+}
+
+// Node.js has no fs.watch on Haiku (libuv answers ENOSYS). There a watched
+// path is polled instead (fs.watchFile), through an FSWatcher-like emitter
+// that reports 'change' when the path's status changes and 'rename' when it
+// is replaced or removed.
+function installWatchFallback() {
+  const { EventEmitter } = require('events');
+  const watch = fs.watch;
+  fs.watch = function auroraWatch(filename, options, listener) {
+    try {
+      return watch.apply(this, arguments);
+    } catch (error) {
+      if (error.code !== 'ENOSYS')
+        throw error;
+    }
+    if (typeof options === 'function') {
+      listener = options;
+      options = {};
+    } else if (typeof options === 'string') {
+      options = { encoding: options };
+    }
+    options = options || {};
+    const file = filename instanceof URL ? fileURLToPath(filename) : String(filename);
+    const name = path.basename(file);
+    const watcher = new EventEmitter();
+    const changed = (current, previous) => {
+      if (current.mtimeMs === previous.mtimeMs && current.size === previous.size && current.ino === previous.ino)
+        return;
+      watcher.emit('change', current.ino !== previous.ino || current.nlink === 0 ? 'rename' : 'change', name);
+    };
+    fs.watchFile(file, { interval: 500, persistent: options.persistent !== false }, changed);
+    if (listener)
+      watcher.on('change', listener);
+    watcher.close = () => {
+      fs.unwatchFile(file, changed);
+      process.nextTick(() => watcher.emit('close'));
+    };
+    watcher.ref = () => watcher;
+    watcher.unref = () => watcher;
+    return watcher;
+  };
 }
 
 // Native modules: a stand-in when the app ships one; then the module itself;

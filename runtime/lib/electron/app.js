@@ -345,7 +345,7 @@ class App extends Emitter {
   // which starts the app with the link: a second instance passes it to the
   // first through 'second-instance'. Only a packaged app has a launcher.
   setAsDefaultProtocolClient(protocol) {
-    if (!process.env.AURORA_HOST_FDS || !state.host)
+    if (!state.host || !state.host.launcher)
       return false;
     this._protocolClients = this._protocolClients || new Set();
     this._protocolClients.add(String(protocol).toLowerCase());

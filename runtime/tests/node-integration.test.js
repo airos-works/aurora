@@ -72,6 +72,8 @@ test('pages with nodeIntegration get require, module, process, Buffer and __dirn
     platform: process.platform, env: typeof process.env.PATH, immediate: typeof setImmediate, global: global === window,
     pathJoin: require('path').join('/a', 'b', '../c'), events: typeof require('events').EventEmitter,
     stringMax: require('buffer').kStringMaxLength > 0, util: typeof require('util').promisify,
+    stripped: require('util').stripVTControlCharacters('\\u001b[31mred\\u001b[0m, \\u001b]8;;x\\u0007link'),
+    win32: require('path').win32.join('C:\\\\a', 'b'),
   })`);
   assert.equal(result.require, 'function');
   assert.equal(result.module, 'object');
@@ -85,6 +87,8 @@ test('pages with nodeIntegration get require, module, process, Buffer and __dirn
   assert.equal(result.events, 'function');
   assert.equal(result.stringMax, true);
   assert.equal(result.util, 'function');
+  assert.equal(result.stripped, 'red, link');
+  assert.equal(result.win32, 'C:\\a\\b');
 });
 
 test('fs answers with Buffers, Stats and Dirents of the page', async () => {

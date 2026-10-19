@@ -106,6 +106,8 @@ class Host extends EventEmitter {
     if (process.env.AURORA_HOST_FDS) {
       const [input, output] = process.env.AURORA_HOST_FDS.split(',').map(Number);
       delete process.env.AURORA_HOST_FDS;
+      // The host is a packaged app's launcher (host/Launcher.h).
+      this.launcher = true;
       this.attach(input, output);
       return;
     }

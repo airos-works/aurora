@@ -1031,7 +1031,14 @@ function bridgeRuntime() {
       // The page's own modules: their classes are the page's, so instanceof
       // and subclassing work (class LineStream extends stream.Transform).
       const { stream } = node;
+      // Node.js's pattern for terminal escape sequences (util.inspect).
+      const ansi = new RegExp('[\\u001B\\u009B][[\\]()#;?]*(?:(?:(?:(?:;[-a-zA-Z\\d\\/\\#&.:=?%@~_]+)*'
+        + '|[a-zA-Z\\d]+(?:;[-a-zA-Z\\d\\/\\#&.:=?%@~_]*)*)?(?:\\u0007|\\u001B\\u005C|\\u009C))'
+        + '|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-ntqry=><~]))', 'g');
       const util = Object.assign({}, node.util, { TextEncoder, TextDecoder,
+        stripVTControlCharacters: (text) => String(text).replace(ansi, ''),
+        styleText: (format, text) => String(text),
+        toUSVString: (text) => (String.prototype.toWellFormed ? String(text).toWellFormed() : String(text)),
         isDeepStrictEqual(a, b) {
           try {
             node.assert.deepStrictEqual(a, b);
