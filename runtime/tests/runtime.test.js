@@ -151,3 +151,32 @@ test('an app started without PATH or HOME gets Haiku\'s defaults', () => {
   assert.match(result.stdout, /^PATH=.*:\/bin:/m);
   assert.match(result.stdout, /^HOME=\/.+/m);
 });
+
+test('net.request takes a response callback and decodes compressed responses', async () => {
+  const http = require('http');
+  const zlib = require('zlib');
+  const { request } = require('../lib/electron/net-request');
+  const server = http.createServer((incoming, response) => {
+    const accepted = incoming.headers['accept-encoding'] || '';
+    response.writeHead(200, { 'content-type': 'application/json', 'content-encoding': accepted.includes('gzip') ? 'gzip' : 'identity' });
+    const body = Buffer.from(JSON.stringify({ path: incoming.url, accepted }));
+    response.end(accepted.includes('gzip') ? zlib.gzipSync(body) : body);
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+  const answer = await new Promise((resolve, reject) => {
+    const clientRequest = request({ protocol: 'http:', hostname: '127.0.0.1', port, path: '/gallery?x=1' }, (response) => {
+      let text = '';
+      response.setEncoding('utf8');
+      response.on('data', (chunk) => { text += chunk; });
+      response.on('end', () => resolve({ status: response.statusCode, encoding: response.headers['content-encoding'], body: JSON.parse(text) }));
+    });
+    clientRequest.on('error', reject);
+    clientRequest.end();
+  });
+  server.close();
+  assert.equal(answer.status, 200);
+  assert.equal(answer.encoding, undefined);
+  assert.equal(answer.body.path, '/gallery?x=1');
+  assert.match(answer.body.accepted, /gzip/);
+});
