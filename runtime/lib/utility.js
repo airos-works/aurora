@@ -17,7 +17,15 @@ const { applyAppOverrides, installModuleHooks } = require('./node-setup');
 const info = JSON.parse(process.env.AURORA_UTILITY || '{}');
 delete process.env.AURORA_UTILITY;
 
-const send = process.send.bind(process);
+const rawSend = process.send.bind(process);
+// Nothing is sent once the main process is gone (see 'disconnect' below).
+const send = (message) => {
+  if (!process.connected)
+    return;
+  try {
+    rawSend(message);
+  } catch {}
+};
 const ports = require('./electron/message-ports');
 const link = ports.createLink('parent', (packet) => send({ $aurora: 'port', packet }));
 
@@ -70,6 +78,9 @@ process.on('message', (message) => {
     ports.receive(link, message.packet);
   }
 });
+// Electron's utility processes end with the main process: here the channel
+// closes when it does, even when it is killed.
+process.on('disconnect', () => process.exit(0));
 // The channel to the main process must not keep the process alive by
 // itself, as Electron's does not: a utility process ends when its work does.
 if (process.channel && typeof process.channel.unref === 'function')

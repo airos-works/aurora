@@ -149,3 +149,20 @@ test('a page and a utility process talk through ports the main process made', as
   child.kill();
   await exited;
 });
+
+test('a utility process ends when the main process is killed', async () => {
+  const { spawnSync } = require('child_process');
+  const result = spawnSync(process.execPath, [path.join(__dirname, 'apps/utility/orphan-main.js')], { encoding: 'utf8', timeout: 20000 });
+  const pid = parseInt(result.stdout, 10);
+  assert.ok(pid > 0);
+  let alive = true;
+  for (let attempt = 0; attempt < 50 && alive; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    try {
+      process.kill(pid, 0);
+    } catch {
+      alive = false;
+    }
+  }
+  assert.equal(alive, false);
+});
