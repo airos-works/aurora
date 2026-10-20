@@ -107,12 +107,22 @@ function bridgeRuntime() {
     const handlers = window.webkit && window.webkit.messageHandlers;
     const channel = handlers && handlers.aurora;
     const isTop = window === window.top;
+    let portPackets = [];
     function post(message) {
       message.k = config.token;
       message.top = isTop;
       if (!channel)
         return Promise.reject(new Error('Aurora: this page cannot reach the main process'));
+      // Port messages queued before this one go first.
+      if (portPackets.length && message.t !== 'port')
+        flushPorts();
       return channel.postMessage(JSON.stringify(message));
+    }
+    function flushPorts() {
+      const packets = portPackets;
+      portPackets = [];
+      if (packets.length)
+        post({ t: 'port', p: packets }).catch(() => {});
     }
 
     class EventEmitter {
@@ -216,7 +226,72 @@ function bridgeRuntime() {
       return decode(JSON.parse(request.responseText).v);
     };
     ipcRenderer.sendToHost = (name, ...args) => ipcRenderer.send(name, ...args);
-    ipcRenderer.postMessage = (name, message) => ipcRenderer.send(name, message);
+
+    // MessagePorts to and from the main process (electron/message-ports.js).
+    // A port the main process sends is one end of a channel made here, whose
+    // other end the bridge keeps and relays; a port the page sends is kept
+    // by the bridge, which relays for its peer.
+    const messagePorts = (() => {
+      const held = new Map();       // id -> { port: the bridge's end, peer }
+      const given = new WeakMap();  // port the page got -> { id, peer }
+      const prefix = `${config.token.slice(0, 8)}.${Math.random().toString(36).slice(2, 8)}.`;
+      let next = 1;
+      function send(packet) {
+        portPackets.push(packet);
+        if (portPackets.length === 1)
+          queueMicrotask(flushPorts);
+      }
+      function relay(port, to) {
+        port.onmessage = (event) => send({ op: 'deliver', id: to, data: encode(event.data), ports: describe([...event.ports]) });
+      }
+      function adopt({ id, peer }) {
+        const pair = new MessageChannel();
+        held.set(id, { port: pair.port2, peer });
+        relay(pair.port2, peer);
+        given.set(pair.port1, { id, peer });
+        return pair.port1;
+      }
+      function describe(list) {
+        return (list || []).map((port) => {
+          const known = given.get(port);
+          if (known) {
+            // Going back: the bridge stops relaying for it.
+            const entry = held.get(known.id);
+            if (entry) {
+              entry.port.onmessage = null;
+              held.delete(known.id);
+            }
+            given.delete(port);
+            return { id: known.id, peer: known.peer };
+          }
+          const id = `${prefix}${next++}`;
+          const peer = `${prefix}${next++}`;
+          held.set(peer, { port, peer: id });
+          relay(port, id);
+          return { id, peer };
+        });
+      }
+      function receive(packet) {
+        const entry = held.get(packet.id);
+        if (!entry)
+          return;
+        if (packet.op === 'deliver') {
+          const ports = (packet.ports || []).map(adopt);
+          entry.port.postMessage(decode(packet.data), ports);
+        } else if (packet.op === 'closed') {
+          held.delete(packet.id);
+          entry.port.onmessage = null;
+          entry.port.close();
+        }
+      }
+      return { adopt, describe, receive };
+    })();
+    ipcRenderer.postMessage = (name, message, transfer) => {
+      if (transfer !== undefined && !Array.isArray(transfer))
+        throw new TypeError('Invalid value for transfer');
+      const ports = messagePorts.describe(transfer || []);
+      post({ t: 'postMessage', ch: String(name), a: encode([message]), p: ports }).catch(() => {});
+    };
 
     // setImmediate without the clamp of nested timers: a message to a
     // channel of the page's own, as fast as Node.js's.
@@ -768,6 +843,16 @@ function bridgeRuntime() {
           }
           if (name === '\u0000remote') {
             remote.dispatch(encodedArgs);
+            return;
+          }
+          if (name === '\u0000port') {
+            messagePorts.receive(encodedArgs);
+            return;
+          }
+          if (name === '\u0000postMessage') {
+            // webContents.postMessage: one message and the ports it carries.
+            const ports = (encodedArgs.p || []).map(messagePorts.adopt);
+            ipcRenderer.emit(encodedArgs.ch, { sender: ipcRenderer, senderId: 0, ports }, ...decode(encodedArgs.a));
             return;
           }
           const args = decode(encodedArgs);

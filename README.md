@@ -47,6 +47,11 @@ Query Tool against PostgreSQL, and its quit confirmation. Older engines (see
 Building) show windows, menus and dialogs, but pages cannot reach the main
 process there.
 
+Code - OSS (VS Code) runs as an air/OS app: its fork
+([jmgasper/vscode](https://github.com/jmgasper/vscode), branch `haiku`,
+`build/haiku`) builds a package with the workbench, extension host, terminal
+and file watching of the Linux build, on utility processes and message ports.
+
 GitHub Desktop runs as a Haiku app: its fork
 ([jmgasper/desktop](https://github.com/jmgasper/desktop), branch `haiku`)
 builds a package that uses Haiku's own Git. Its pages have Node.js
@@ -82,7 +87,14 @@ its Python server.
   - **System services:** `clipboard`, `shell`, `screen`, `nativeTheme`,
     `Notification`, `Tray` (an icon in Deskbar's tray with its context
     menu), `protocol.handle` and custom schemes, downloads, `safeStorage`,
-    `net.fetch`, `utilityProcess`.
+    `net.fetch`.
+  - **Processes and ports:** `utilityProcess.fork` runs a Node.js child that
+    looks like Electron's utility process (`process.parentPort`, `type`
+    `utility`, the app's platform and native stand-ins). `MessageChannelMain`
+    ports travel between the main process, pages (`webContents.postMessage`,
+    `ipcRenderer.postMessage`, where they arrive as DOM `MessagePort`s) and
+    utility processes, in either direction; the main process relays their
+    messages, and a port closes when the page or child holding its peer goes.
   - **Node.js in pages:** a window with `sandbox: false` or
     `nodeIntegration` gets the Node.js modules its preload requires; with
     `nodeIntegration` and no `contextIsolation`, the page's own scripts get

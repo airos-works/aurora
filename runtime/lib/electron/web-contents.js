@@ -9,6 +9,7 @@ const path = require('path');
 const { URL } = require('url');
 const { state, createEvent, defaultUserAgent, toFileURL, Emitter } = require('./common');
 const { encode, decode } = require('../serialize');
+const messagePorts = require('./message-ports');
 
 let ipcMain = null;
 function mainIpc() {
@@ -18,6 +19,16 @@ function mainIpc() {
 }
 
 let nextFindRequest = 1;
+
+// Whether code is one expression (which may await), as opposed to statements.
+function isExpression(code) {
+  try {
+    new (require('vm').Script)(`(async () => (\n${code}\n))`);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 class WebContents extends Emitter {
   constructor(window, options = {}) {
@@ -109,7 +120,7 @@ class WebContents extends Emitter {
       origin: (() => { try { return new URL(this._url).origin; } catch { return 'null'; } })(),
       executeJavaScript: (code, userGesture) => contents.executeJavaScript(code, userGesture),
       send: (channel, ...args) => contents.send(channel, ...args),
-      postMessage: (channel, message) => contents.send(channel, message),
+      postMessage: (channel, message, transfer) => contents.postMessage(channel, message, transfer),
       reload: () => { contents.reload(); return true; },
       isDestroyed: () => contents._destroyed,
       ipc: this.ipc,
@@ -329,12 +340,23 @@ class WebContents extends Emitter {
     await this.executeJavaScript(`document.querySelectorAll('style[data-aurora-key=${JSON.stringify(String(key))}]').forEach((node) => node.remove())`);
   }
 
-  // The result is structured-cloned back, like Electron's.
+  // The result is structured-cloned back, like Electron's. Pages with
+  // Trusted Types (VS Code's) refuse eval(), so an expression goes into the
+  // script itself, and statements run as a script of their own, whose value
+  // the engine returns as JSON.
   executeJavaScript(code, userGesture) {
     if (this._destroyed)
       return Promise.reject(new Error('Object has been destroyed'));
+    const text = String(code);
+    if (!isExpression(text)) {
+      return state.host.script(this.id, text, false).then((result) => {
+        if (result.resultType === 'string')
+          return result.result;
+        return result.resultType === 'json' ? JSON.parse(result.result) : undefined;
+      });
+    }
     const body = `const __auroraEncode = (${require('../serialize').encodeSource});`
-      + ` const __auroraValue = await (0, eval)(${JSON.stringify(String(code))});`
+      + ` const __auroraValue = await (\n${text}\n);`
       + ' return JSON.stringify(__auroraEncode(__auroraValue));';
     return state.host.script(this.id, body, true).then((result) => {
       if (result.resultType !== 'string')
@@ -487,8 +509,34 @@ class WebContents extends Emitter {
     this.send(channel, ...args);
   }
 
-  postMessage(channel, message) {
-    this.send(channel, message);
+  // A message and the MessagePortMain objects it carries to the page.
+  postMessage(channel, message, transfer = []) {
+    for (const port of transfer || []) {
+      if (!(port instanceof messagePorts.MessagePortMain))
+        throw new TypeError('Only MessagePortMain objects can be transferred');
+    }
+    if (this._destroyed)
+      return;
+    const link = this._portLink();
+    this._dispatch('\u0000postMessage', { ch: String(channel), a: encode([message]),
+      p: (transfer || []).map((port) => port._sendTo(link)) });
+  }
+
+  // The page's end of the ports it holds; a new document starts without any.
+  _portLink() {
+    if (!this._ports) {
+      this._ports = messagePorts.createLink(`page ${this.id}`, (packet) => {
+        this._dispatch('\u0000port', packet.op === 'deliver' ? { ...packet, data: encode(packet.data) } : packet);
+      });
+    }
+    return this._ports;
+  }
+
+  _portsGone() {
+    const link = this._ports;
+    this._ports = null;
+    if (link)
+      link.gone();
   }
 
   // Messages for the page go in one script per turn of the event loop, in
@@ -595,6 +643,9 @@ class WebContents extends Emitter {
     const generation = message.loadGeneration;
     if (generation !== undefined && generation !== this._generation) {
       this._generation = generation;
+      // The ports the old document held are gone with it.
+      if (message.loadOutcome === 'loading')
+        this._portsGone();
       if (message.loadOutcome === 'loading')
         this.emit('did-start-navigation', createEvent({ url: this._url, isMainFrame: true, isSameDocument: false }),
           this._url, false, true, 1, 1);
@@ -699,6 +750,26 @@ class WebContents extends Emitter {
       }
       return;
     }
+    case 'postMessage': {
+      // ipcRenderer.postMessage: the ports arrive as MessagePortMain objects.
+      reply('null');
+      const args = decode(body.a) || [];
+      const ports = messagePorts.portsFrom(this._portLink(), body.p);
+      for (const port of ports)
+        port._arrive();
+      const event = this._ipcEvent(message, body);
+      event.ports = ports;
+      this.emit('ipc-message', event, body.ch, ...args);
+      if (!this.ipc.emit(body.ch, event, ...args))
+        mainIpc().emit(body.ch, event, ...args);
+      return;
+    }
+    case 'port':
+      reply('null');
+      for (const packet of body.p || []) {
+        messagePorts.receive(this._portLink(), packet.op === 'deliver' ? { ...packet, data: decode(packet.data) } : packet);
+      }
+      return;
     case 'window-drag':
       // A press in the page's app-region: drag area (renderer/bridge.js).
       reply('null');
@@ -768,7 +839,7 @@ class WebContents extends Emitter {
       origin: message.origin,
       isDestroyed: () => false,
       send: (channel, ...args) => contents.send(channel, ...args),
-      postMessage: (channel, value) => contents.send(channel, value),
+      postMessage: (channel, value, transfer) => contents.postMessage(channel, value, transfer),
       executeJavaScript: (code) => contents.executeJavaScript(code),
     };
     return {
@@ -811,6 +882,7 @@ class WebContents extends Emitter {
     if (this._destroyed)
       return;
     this._remote = null;
+    this._portsGone();
     this._destroyed = true;
     for (const pending of this._pendingLoads.splice(0))
       pending.reject(new Error('The window was closed'));

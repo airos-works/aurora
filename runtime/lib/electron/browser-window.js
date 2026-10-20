@@ -130,9 +130,8 @@ class BrowserWindow extends Emitter {
       hostOptions.userScripts = [{ source, when: 'start', allFrames: !!webPreferences.nodeIntegrationInSubFrames }];
       this._preloadFiles = files;
     }
-    const menu = menuModule();
-    if (state.applicationMenu === null && menu.Menu._applicationMenuSet)
-      hostOptions.menu = [];
+    // Without a menu of its own (setMenu), a window shows the application
+    // menu: none while the app has set it to null, and whatever it sets later.
     this._created = state.host.request('window.create', { id: this.id, options: hostOptions, newPageRequest: internal.newPageRequest || 0 })
       .catch((error) => {
         process.stderr.write(`[aurora] could not create window ${this.id}: ${error.message}\n`);

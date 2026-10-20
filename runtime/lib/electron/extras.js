@@ -282,72 +282,101 @@ const netLog = {
   get currentlyLogging() { return false; },
 };
 
-class MessagePortMain extends Emitter {
-  constructor() {
+const { MessageChannelMain, MessagePortMain } = require('./message-ports');
+const messagePorts = require('./message-ports');
+
+// utilityProcess: a Node.js child (lib/utility.js) that looks like Electron's
+// utility process. Its IPC channel carries process.parentPort's messages and
+// the packets of the ports it holds.
+function stdioFor(option) {
+  const each = Array.isArray(option) ? option.slice(0, 3) : [option || 'inherit', option || 'inherit', option || 'inherit'];
+  while (each.length < 3)
+    each.push('inherit');
+  return [...each.map((value) => (value === 'pipe' || value === 'ignore' || value === 'inherit' ? value : 'inherit')), 'ipc'];
+}
+
+// Chromium switches mean nothing to Node.js, which refuses unknown options.
+function nodeOptions(execArgv) {
+  const allowed = process.allowedNodeEnvironmentFlags;
+  return (execArgv || []).filter((argument) => allowed.has(String(argument).split('=')[0]));
+}
+
+class UtilityProcess extends Emitter {
+  constructor(modulePath, args, options) {
     super();
-    this._other = null;
-    this._started = false;
-    this._queue = [];
-  }
-
-  postMessage(message) {
-    const other = this._other;
-    if (!other)
-      return;
-    const event = { data: message, ports: [] };
-    if (other._started)
-      setImmediate(() => other.emit('message', event));
-    else
-      other._queue.push(event);
-  }
-
-  start() {
-    this._started = true;
-    for (const event of this._queue.splice(0))
-      setImmediate(() => this.emit('message', event));
-  }
-
-  close() {
-    const other = this._other;
-    this._other = null;
-    if (other) {
-      other._other = null;
-      other.emit('close');
+    const info = { electronVersion: state.appInfo.electronVersion, chromeVersion: state.appInfo.chromeVersion,
+      auroraVersion: process.versions.aurora, resourcesPath: process.resourcesPath, serviceName: options.serviceName };
+    const env = { ...(options.env || process.env), AURORA_UTILITY: JSON.stringify(info) };
+    for (const name of ['AURORA_PLATFORM', 'AURORA_NATIVE_SHIMS']) {
+      if (process.env[name] && env[name] === undefined)
+        env[name] = process.env[name];
     }
-    this.emit('close');
-  }
-}
-
-class MessageChannelMain {
-  constructor() {
-    this.port1 = new MessagePortMain();
-    this.port2 = new MessagePortMain();
-    this.port1._other = this.port2;
-    this.port2._other = this.port1;
-  }
-}
-
-// utilityProcess: a Node.js child with a message port, as fork gives.
-const utilityProcess = {
-  fork(modulePath, args = [], options = {}) {
-    const child = require('child_process').fork(modulePath, args, {
-      cwd: options.cwd, env: options.env || process.env, execArgv: options.execArgv, stdio: options.stdio === 'pipe' ? 'pipe' : 'inherit',
+    this._child = require('child_process').fork(path.join(__dirname, '..', 'utility.js'), [modulePath, ...args], {
+      cwd: options.cwd, env, execArgv: nodeOptions(options.execArgv), stdio: stdioFor(options.stdio),
       serialization: 'advanced',
       // Node.js itself, not an app's launcher standing in for process.execPath.
       execPath: state.nodePath || process.execPath,
     });
-    const handle = new Emitter();
-    Object.assign(handle, {
-      pid: child.pid,
-      stdout: child.stdout || null,
-      stderr: child.stderr || null,
-      postMessage: (message) => child.send(message),
-      kill: () => child.kill(),
+    const child = this._child;
+    this.pid = child.pid;
+    this.stdout = child.stdout || null;
+    this.stderr = child.stderr || null;
+    this._link = messagePorts.createLink(`utility ${modulePath}`, (packet) => this._send({ $aurora: 'port', packet }));
+    this._exited = false;
+    child.on('spawn', () => {
+      this.pid = child.pid;
+      this.emit('spawn');
     });
-    child.on('spawn', () => handle.emit('spawn'));
-    child.on('message', (data) => handle.emit('message', data));
-    child.on('exit', (code) => handle.emit('exit', code));
-    return handle;
+    child.on('message', (message) => {
+      if (!message || typeof message !== 'object')
+        return;
+      if (message.$aurora === 'parent')
+        this.emit('message', message.data);
+      else if (message.$aurora === 'port')
+        messagePorts.receive(this._link, message.packet);
+    });
+    child.on('error', (error) => {
+      if (!this.pid)
+        this.emit('error', 'FatalError', modulePath, String(error && error.message || error));
+    });
+    child.on('exit', (code, signal) => {
+      if (this._exited)
+        return;
+      this._exited = true;
+      this.pid = undefined;
+      this._link.gone();
+      this.emit('exit', typeof code === 'number' ? code : (signal ? 1 : 0));
+    });
+  }
+
+  _send(message) {
+    if (this._exited || !this._child.connected)
+      return;
+    try {
+      this._child.send(message);
+    } catch (error) {
+      process.stderr.write(`[aurora] cannot send to a utility process: ${error.message}\n`);
+    }
+  }
+
+  postMessage(message, transfer = []) {
+    for (const port of transfer || []) {
+      if (!(port instanceof MessagePortMain))
+        throw new TypeError('Only MessagePortMain objects can be transferred');
+    }
+    this._send({ $aurora: 'parent', data: message, ports: (transfer || []).map((port) => port._sendTo(this._link)) });
+  }
+
+  kill() {
+    if (this._exited)
+      return false;
+    return this._child.kill('SIGTERM');
+  }
+}
+
+const utilityProcess = {
+  fork(modulePath, args = [], options = {}) {
+    return new UtilityProcess(String(modulePath), (args || []).map(String), options || {});
   },
 };
 

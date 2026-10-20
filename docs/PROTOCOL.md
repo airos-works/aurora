@@ -132,6 +132,12 @@ ones (ack, sub, flow, destroy, abort, release). Emitters and streams the page
 receives have their events held until the page acks them, then the events it
 subscribed to arrive, in the order they happened, with promise settlements
 and callbacks (`{ev, n, a}`, `{settle}`, `{call}` through `aurora.dispatch`).
+`postMessage` is `ipcRenderer.postMessage` (`p` the ports it carries) and
+`port` a list of packets for ports the page holds
+(`runtime/lib/electron/message-ports.js`: `{op: 'deliver', id, data, ports}`
+or `{op: 'closed', id}`); the main process sends ports' packets to a page
+through the `\u0000port` dispatch channel, and `webContents.postMessage` with
+ports through `\u0000postMessage`.
 `console` carries the page's console (`AURORA_PAGE_CONSOLE=1`);
 `window-drag` is a press on an `-webkit-app-region: drag` area of a frameless
 window. `ipcRenderer.sendSync` is a synchronous request to
