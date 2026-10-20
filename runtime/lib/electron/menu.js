@@ -214,7 +214,9 @@ class MenuItem {
         result.key = accelerator.key;
         result.modifiers = accelerator.modifiers;
       }
-      result.acceleratorLabel = accelerator.label;
+      // A shortcut the page handles: WebKit gives pages Haiku's Control key
+      // as Alt (and Command as Control), so Alt is the Ctrl key there.
+      result.acceleratorLabel = install || !accelerator.alt ? accelerator.label : accelerator.label.replace(/\bOpt\b/, 'Ctrl');
     }
     if (this.submenu)
       result.submenu = this.submenu.items.map((item) => item._serialize(owner));

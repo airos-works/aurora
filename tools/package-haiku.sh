@@ -11,7 +11,7 @@ BUILD=${BUILD:-$ROOT/build}
 VERSION=$(sed -n 's/.*"version": "\(.*\)".*/\1/p' "$ROOT/runtime/package.json" | head -1)
 # The package's revision: raise it for a new package of the same version
 # (pkgman does not replace an installed package with an equal version).
-REVISION=2
+REVISION=3
 ARCH=$(uname -m)
 STAGE=$(mktemp -d "${TMPDIR:-/tmp}/aurora-package.XXXXXX")
 trap 'rm -rf "$STAGE"' EXIT
