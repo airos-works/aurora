@@ -15,6 +15,7 @@
 #include <TextView.h>
 #include <Window.h>
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <set>
 // struct stat_beos, which BRefFilter::Filter() receives.
@@ -127,6 +128,19 @@ alert_type AlertTypeFor(const std::string& type)
     return B_EMPTY_ALERT;
 }
 
+// A wrapped text view's height at a width. The layout learns it only once
+// the view has a frame, so the window would be laid out too short and cut
+// off its buttons.
+static void FitTextView(BTextView* view, float width)
+{
+    view->SetWordWrap(true);
+    view->ResizeTo(width, 1000);
+    view->SetTextRect(BRect(0, 0, width, 1000));
+    float height = ceilf(view->TextHeight(0, view->CountLines() - 1)) + 2;
+    view->SetExplicitMinSize(BSize(width, height));
+    view->SetExplicitPreferredSize(BSize(width, height));
+}
+
 // Message boxes BAlert cannot show: more than three buttons, or a checkbox.
 class MessageBoxWindow final : public BWindow {
 public:
@@ -144,7 +158,8 @@ public:
         message->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
         BFont bold(be_bold_font);
         message->SetFontAndColor(&bold);
-        message->SetExplicitMinSize(BSize(360, B_SIZE_UNSET));
+        const float textWidth = std::max(360.0f, 90.0f * buttons.size());
+        FitTextView(message, textWidth);
         auto builder = BLayoutBuilder::Group<>(this, B_VERTICAL, B_USE_DEFAULT_SPACING);
         builder.SetInsets(B_USE_WINDOW_INSETS).Add(message);
         std::string detailText = StringOf(options, "detail");
@@ -153,6 +168,7 @@ public:
             detail->SetText(detailText.c_str());
             detail->MakeEditable(false);
             detail->SetViewUIColor(B_PANEL_BACKGROUND_COLOR);
+            FitTextView(detail, textWidth);
             builder.Add(detail);
         }
         std::string checkboxLabel = StringOf(options, "checkboxLabel");
