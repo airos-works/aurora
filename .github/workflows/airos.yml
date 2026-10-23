@@ -1,5 +1,6 @@
-# Builds the air/OS package (x86_64) on every push to main and publishes it to the rolling
-# "latest" release, with links in the README; the x86_64 image builds take it from the package pool.
+# Builds the air/OS packages (x86_64 and arm64) on every push to main and publishes them to the
+# rolling "latest" release, with links in the README; the image builds take them from the package
+# pool. arm64 runs with airos-ci's nodejs22 (deps/recipes/nodejs22.sh), x86_64 with HaikuPorts'.
 # The pipeline itself lives in jmgasper/airos-ci (apps/build-app-packages.sh, build_aurora).
 name: air/OS build
 
@@ -14,6 +15,5 @@ jobs:
     with:
       app: aurora
       repo-dir: aurora
-      architectures: x86_64
     permissions:
       contents: write
