@@ -109,11 +109,32 @@ Object.assign(screen, {
   getAllDisplays() {
     return state.screens.length ? state.screens.map(toDisplay) : [screen.getPrimaryDisplay()];
   },
-  getDisplayNearestPoint() {
-    return screen.getPrimaryDisplay();
+  // the display containing the point, else the closest one
+  getDisplayNearestPoint(point) {
+    if (!point || !state.screens.length) return screen.getPrimaryDisplay();
+    let best = state.screens[0], bestDistance = Infinity;
+    for (const candidate of state.screens) {
+      const b = candidate.bounds;
+      const dx = Math.max(b.x - point.x, 0, point.x - (b.x + b.width - 1));
+      const dy = Math.max(b.y - point.y, 0, point.y - (b.y + b.height - 1));
+      const distance = dx * dx + dy * dy;
+      if (distance < bestDistance) { best = candidate; bestDistance = distance; }
+    }
+    return toDisplay(best);
   },
-  getDisplayMatching() {
-    return screen.getPrimaryDisplay();
+  // the display most of the rectangle is on, else the one nearest its centre
+  getDisplayMatching(rect) {
+    if (!rect || !state.screens.length) return screen.getPrimaryDisplay();
+    let best = null, bestArea = 0;
+    for (const candidate of state.screens) {
+      const b = candidate.bounds;
+      const width = Math.min(b.x + b.width, rect.x + rect.width) - Math.max(b.x, rect.x);
+      const height = Math.min(b.y + b.height, rect.y + rect.height) - Math.max(b.y, rect.y);
+      const area = width > 0 && height > 0 ? width * height : 0;
+      if (area > bestArea) { best = candidate; bestArea = area; }
+    }
+    if (best) return toDisplay(best);
+    return screen.getDisplayNearestPoint({ x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 });
   },
   getCursorScreenPoint() {
     return { x: 0, y: 0 };

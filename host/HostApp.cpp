@@ -4,6 +4,7 @@
 
 #include "AppWindow.h"
 #include "Dialogs.h"
+#include "Displays.h"
 #include "Embedding.h"
 #include "Keychain.h"
 #include "Launcher.h"
@@ -147,23 +148,25 @@ HostApp::~HostApp()
 
 json HostApp::Screens()
 {
-    BScreen screen(B_MAIN_SCREEN_ID);
-    BRect frame = screen.Frame();
-    json bounds = { { "x", frame.left }, { "y", frame.top }, { "width", frame.Width() + 1 }, { "height", frame.Height() + 1 } };
-    json workArea = bounds;
-    BDeskbar deskbar;
-    BRect bar = deskbar.Frame();
-    if (bar.IsValid()) {
-        // Keep windows clear of a Deskbar that spans the top or bottom edge.
-        if (bar.Width() >= frame.Width() / 2 && bar.top <= frame.top + 1) {
-            workArea["y"] = bar.bottom + 1;
-            workArea["height"] = frame.bottom - bar.bottom;
-        } else if (bar.Width() >= frame.Width() / 2 && bar.bottom >= frame.bottom - 1) {
-            workArea["height"] = bar.top - frame.top;
+    BRect bar = BDeskbar().Frame();
+    json screens = json::array();
+    for (const Display& display : Displays()) {
+        BRect frame = display.frame;
+        json bounds = { { "x", frame.left }, { "y", frame.top }, { "width", frame.Width() + 1 }, { "height", frame.Height() + 1 } };
+        json workArea = bounds;
+        if (bar.IsValid() && bar.Intersects(frame)) {
+            // Keep windows clear of a Deskbar that spans the top or bottom edge.
+            if (bar.Width() >= frame.Width() / 2 && bar.top <= frame.top + 1) {
+                workArea["y"] = bar.bottom + 1;
+                workArea["height"] = frame.bottom - bar.bottom;
+            } else if (bar.Width() >= frame.Width() / 2 && bar.bottom >= frame.bottom - 1) {
+                workArea["height"] = bar.top - frame.top;
+            }
         }
+        screens.push_back({ { "id", display.id }, { "bounds", bounds }, { "workArea", workArea },
+            { "scaleFactor", DisplayScale() }, { "rotation", 0 }, { "internal", false } });
     }
-    return json::array({ { { "id", 0 }, { "bounds", bounds }, { "workArea", workArea },
-        { "scaleFactor", DisplayScale() }, { "rotation", 0 }, { "internal", false } } });
+    return screens;
 }
 
 bool HostApp::DarkMode()

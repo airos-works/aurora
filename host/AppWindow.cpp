@@ -1,6 +1,7 @@
 /* Copyright (C) 2026 KunanyiOS contributors. SPDX-License-Identifier: MIT */
 
 #include "AppWindow.h"
+#include "Displays.h"
 
 #include "Embedding.h"
 #include "MenuBuilder.h"
@@ -63,7 +64,8 @@ BRect InitialFrame(const json& options)
 {
     float width = std::max(1.0, NumberOf(options, "width", 800));
     float height = std::max(1.0, NumberOf(options, "height", 600));
-    BRect screen = BScreen().Frame();
+    // centred on the primary monitor, not across all of them
+    BRect screen = PrimaryDisplayFrame();
     float x = HasNumber(options, "x") ? NumberOf(options, "x") : screen.left + (screen.Width() - width) / 2;
     float y = HasNumber(options, "y") ? NumberOf(options, "y") : screen.top + (screen.Height() - height) / 2;
     return BRect(std::floor(x), std::floor(y), std::floor(x) + width - 1, std::floor(y) + height - 1);
