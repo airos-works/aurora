@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Stage pgAdmin 4 for the Haiku build: run on any machine with Node.js,
-# Python 3 and curl. The staged folder is copied to Haiku, where
-# build-haiku.sh makes the app and its package.
+# Python 3 (PYTHON, default python3, with pip) and curl. The staged folder is
+# copied to Haiku, where build-haiku.sh makes the app and its package, or
+# cross.sh makes the package on Linux.
 #
 #   ports/pgadmin4/stage.sh <stage directory> [version]
 #
@@ -16,9 +17,9 @@ DOWNLOADS=${PGADMIN_DOWNLOADS:-$STAGE/downloads}
 mkdir -p "$STAGE" "$DOWNLOADS"
 
 tarball="$DOWNLOADS/pgadmin4-$VERSION.tar.gz"
-[[ -f $tarball ]] || curl -fL -o "$tarball" "https://ftp.postgresql.org/pub/pgadmin/pgadmin4/v$VERSION/source/pgadmin4-$VERSION.tar.gz"
+[[ -f $tarball ]] || curl -fsSL -o "$tarball" "https://ftp.postgresql.org/pub/pgadmin/pgadmin4/v$VERSION/source/pgadmin4-$VERSION.tar.gz"
 wheel="$DOWNLOADS/pgadmin4-$VERSION-py3-none-any.whl"
-[[ -f $wheel ]] || python3 -m pip download --no-deps --only-binary :all: -d "$DOWNLOADS" "pgadmin4==$VERSION" >&2
+[[ -f $wheel ]] || "${PYTHON:-python3}" -m pip download --no-deps --only-binary :all: -d "$DOWNLOADS" "pgadmin4==$VERSION" >&2
 
 rm -rf "$STAGE/runtime" "$STAGE/source"
 mkdir -p "$STAGE/source"
