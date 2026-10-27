@@ -30,7 +30,7 @@ supplies the rest natively:
 <!-- airos-ci:latest-builds:start -->
 ## Latest builds
 
-Built automatically by air/OS CI from commit `66ea871` on 2026-10-27 ([all files](https://github.com/jmgasper/aurora/releases/tag/latest)).
+Built automatically by air/OS CI from commit `7103635` on 2026-10-27 ([all files](https://github.com/jmgasper/aurora/releases/tag/latest)).
 
 | Architecture | Package |
 |---|---|
