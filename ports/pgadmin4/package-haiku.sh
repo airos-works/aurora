@@ -64,7 +64,9 @@ LAUNCHER="$TARGET/pgAdmin 4"
 [[ -z ${TOOLS:-} ]] || "$TOOLS/resattr/resattr" -O -o "$LAUNCHER" "$RESOURCES"
 (cd "$STAGE" && "${MIMESET[@]}" -f "apps/pgAdmin4/pgAdmin 4")
 # The package is read-only: compile once, and never check the sources again.
-"$PYTHON" -m compileall -q -j 0 --invalidation-mode unchecked-hash \
+# (Its worker processes talk over a socket in TMPDIR, whose path has a short
+# limit: not the build's deep work directory.)
+TMPDIR=/tmp "$PYTHON" -m compileall -q -j 0 --invalidation-mode unchecked-hash \
     -s "$STAGE" -p /boot/system "$SITE" > /dev/null
 ln -s "../../../../apps/pgAdmin4/pgAdmin 4" "$STAGE/data/deskbar/menu/Applications/pgAdmin 4"
 cp "$APP/LICENSE" "$STAGE/data/licenses/pgAdmin"
