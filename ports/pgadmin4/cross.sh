@@ -9,7 +9,8 @@
 # wheels; the native ones (NATIVE) are cross-built with crossenv: a Linux
 # CPython of the same version runs the builds, and sees the target's Python
 # (its sysconfigdata, headers and Makefile) instead of its own. The Rust ones
-# (cryptography, bcrypt) build std for the target with a nightly Rust. Their
+# (cryptography, bcrypt) build std for the target with a nightly Rust;
+# cryptography without maturin, which has no arm64 Haiku. Their
 # wheels are kept in PGADMIN_WHEELHOUSE, so a rebuild only packages.
 # Environment:
 #   AIROS_SDK          an air/OS cross SDK's env.sh for ARCH (CROSS, SYSROOT,
@@ -93,7 +94,7 @@ cp -r "$ROOT/lib/python3.12/config-3.12" "$python/lib/python3.12/"
 sed -i "s/^_PYTHON_HOST_PLATFORM=.*/_PYTHON_HOST_PLATFORM=haiku-1-${TRIPLET%%-*}/" \
 	"$python/lib/python3.12/config-3.12/Makefile"
 "$BUILD_PYTHON" -m venv "$WORK/tools"
-"$WORK/tools/bin/pip" install -q crossenv==1.6.2 installer==0.7.0
+"$WORK/tools/bin/pip" install -q crossenv==1.6.2 installer==0.7.0 wheel==0.45.1
 "$WORK/tools/bin/python" -m crossenv "$python/bin/python3.12" "$WORK/xenv" \
 	--cc "$WORK/bin/haiku-cc" --cxx "$WORK/bin/haiku-c++" --ar "${CROSS}ar" --sysroot "$SYSROOT" \
 	--sysconfigdata-file "$(echo "$ROOT"/lib/python3.12/_sysconfigdata_*.py)" 2>&1 | grep -v '^WARNING: No' || true
@@ -171,6 +172,27 @@ build_native() {
 			export PYO3_CROSS=1 PYO3_CROSS_LIB_DIR=$ROOT/lib/python3.12 PYO3_CROSS_PYTHON_VERSION=3.12
 			export OPENSSL_LIB_DIR=$ROOT/develop/lib OPENSSL_INCLUDE_DIR=$ROOT/develop/headers
 			what="$name==$version"
+			if [[ $name == cryptography ]]; then
+				# maturin, its build backend, knows Haiku on x86_64 only
+				# ("aarch64 is not supported on Haiku"): Cargo builds the
+				# extension, and the wheel is packed as maturin packs it.
+				what=$(sdist cryptography "$version" "$src")
+				export PYO3_BUILD_EXTENSION_MODULE=1
+				cargo build --release --locked --manifest-path "$what/src/rust/Cargo.toml" -j"$(nproc)"
+				local wheel=$src/wheel info
+				info=$wheel/cryptography-$version.dist-info
+				mkdir -p "$info/licenses"
+				cp -r "$what/src/cryptography" "$wheel/"
+				cp "$what/target/$RUST_TARGET/release/libcryptography_rust.so" \
+					"$wheel/cryptography/hazmat/bindings/_rust.abi3.so"
+				cp "$what/PKG-INFO" "$info/METADATA"
+				cp "$what"/LICENSE* "$info/licenses/"
+				printf 'Wheel-Version: 1.0\nGenerator: pgadmin4 cross.sh\nRoot-Is-Purelib: false\nTag: cp312-abi3-haiku_1_%s\n' \
+					"${TRIPLET%%-*}" > "$info/WHEEL"
+				mkdir -p "$WORK/wheels"
+				"$WORK/tools/bin/python" -m wheel pack -d "$WORK/wheels" "$wheel"
+				exit 0
+			fi
 			;;
 		*)
 			what="$name==$version"
