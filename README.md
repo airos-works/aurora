@@ -27,6 +27,19 @@ supplies the rest natively:
                                                    └─ page: preload, ipcRenderer
 ```
 
+<!-- airos-ci:latest-builds:start -->
+## Latest builds
+
+Built automatically by air/OS CI from commit `6fbe772` on 2026-10-27 ([all files](https://github.com/jmgasper/aurora/releases/tag/latest)).
+
+| Architecture | Package |
+|---|---|
+| arm64 | [aurora-0.3.0-5-arm64.hpkg](https://github.com/jmgasper/aurora/releases/download/latest/aurora-0.3.0-5-arm64.hpkg) |
+| x86_64 | [aurora-0.3.0-5-x86_64.hpkg](https://github.com/jmgasper/aurora/releases/download/latest/aurora-0.3.0-5-x86_64.hpkg) |
+
+Install with `pkgman install <file>`, or copy the file into `/boot/system/packages`. Haiku SDK: x86_64 hrev60207-2036-g3d3d333c06, arm64 hrev60207-2036-g3d3d333c06.
+<!-- airos-ci:latest-builds:end -->
+
 ## Running an app
 
 ```sh
