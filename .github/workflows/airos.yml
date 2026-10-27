@@ -1,7 +1,9 @@
 # Builds the air/OS packages (x86_64 and arm64) on every push to main and publishes them to the
 # rolling "latest" release, with links in the README; the image builds take them from the package
 # pool. arm64 runs with airos-ci's nodejs22 (deps/recipes/nodejs22.sh), x86_64 with HaikuPorts'.
-# The pipeline itself lives in jmgasper/airos-ci (apps/build-app-packages.sh, build_aurora).
+# pgAdmin 4 (ports/pgadmin4) is built in the same job, after Aurora, so the release carries both.
+# The pipeline itself lives in jmgasper/airos-ci (apps/build-app-packages.sh, build_aurora and
+# build_pgadmin4).
 name: air/OS build
 
 on:
@@ -13,7 +15,7 @@ jobs:
   airos:
     uses: jmgasper/airos-ci/.github/workflows/app.yml@main
     with:
-      app: aurora
+      app: aurora,pgadmin4
       repo-dir: aurora
     permissions:
       contents: write
