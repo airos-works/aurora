@@ -30,7 +30,7 @@ supplies the rest natively:
 <!-- airos-ci:latest-builds:start -->
 ## Latest builds
 
-Built automatically by air/OS CI from commit `ad1f96d` on 2026-10-27 ([all files](https://github.com/airos-works/aurora/releases/tag/latest)).
+Built automatically by air/OS CI from commit `1240b76` on 2026-10-28 ([all files](https://github.com/airos-works/aurora/releases/tag/latest)).
 
 | Architecture | Package |
 |---|---|
@@ -39,7 +39,7 @@ Built automatically by air/OS CI from commit `ad1f96d` on 2026-10-27 ([all files
 | x86_64 | [aurora-0.3.0-5-x86_64.hpkg](https://github.com/airos-works/aurora/releases/download/latest/aurora-0.3.0-5-x86_64.hpkg) |
 | x86_64 | [pgadmin4-9.18-3-x86_64.hpkg](https://github.com/airos-works/aurora/releases/download/latest/pgadmin4-9.18-3-x86_64.hpkg) |
 
-Install with `pkgman install <file>`, or copy the file into `/boot/system/packages`. Haiku SDK: x86_64 hrev60207-2054-g18abf2934f, arm64 hrev60207-2054-g18abf2934f.
+Install with `pkgman install <file>`, or copy the file into `/boot/system/packages`. Haiku SDK: x86_64 hrev60207-2078-gd744fdba2f, arm64 hrev60207-2080-gdfe67e6ac3.
 <!-- airos-ci:latest-builds:end -->
 
 ## Running an app
