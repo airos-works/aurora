@@ -11,7 +11,7 @@ VERSION=${2:?version}
 OUT=${3:?output directory}
 # The package's revision: raise it for a new package of the same pgAdmin
 # (pkgman does not replace an installed package with an equal version).
-REVISION=3
+REVISION=4
 ARCH=${ARCH:-$(uname -m)}
 if [[ -n ${HAIKU_HOST_TOOLS:-} ]]; then
 	TOOLS=$HAIKU_HOST_TOOLS
@@ -34,7 +34,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "$STAGE/apps/pgAdmin4" "$STAGE/data/deskbar/menu/Applications" "$STAGE/data/licenses"
+mkdir -p "$STAGE/apps/pgAdmin4" "$STAGE/data/deskbar/menu/Developer" "$STAGE/data/licenses"
 # Not the engine a development build may link to: the package uses Summit's.
 tar -C "$APP" --exclude=./webkit -cf - . | tar -C "$STAGE/apps/pgAdmin4" -xf -
 TARGET=$STAGE/apps/pgAdmin4
@@ -68,7 +68,7 @@ LAUNCHER="$TARGET/pgAdmin 4"
 # limit: not the build's deep work directory.)
 TMPDIR=/tmp "$PYTHON" -m compileall -q -j 0 --invalidation-mode unchecked-hash \
     -s "$STAGE" -p /boot/system "$SITE" > /dev/null
-ln -s "../../../../apps/pgAdmin4/pgAdmin 4" "$STAGE/data/deskbar/menu/Applications/pgAdmin 4"
+ln -s "../../../../apps/pgAdmin4/pgAdmin 4" "$STAGE/data/deskbar/menu/Developer/pgAdmin 4"
 cp "$APP/LICENSE" "$STAGE/data/licenses/pgAdmin"
 cat > "$STAGE/.PackageInfo" <<INFO
 name			pgadmin4
