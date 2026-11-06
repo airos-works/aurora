@@ -30,16 +30,16 @@ supplies the rest natively:
 <!-- airos-ci:latest-builds:start -->
 ## Latest builds
 
-Built automatically by air/OS CI from commit `12db0e5` on 2026-10-29 ([all files](https://github.com/airos-works/aurora/releases/tag/latest)).
+Built automatically by air/OS CI from commit `7c2b982` on 2026-11-06 ([all files](https://github.com/airos-works/aurora/releases/tag/latest)).
 
 | Architecture | Package |
 |---|---|
-| arm64 | [aurora-0.3.0-5-arm64.hpkg](https://github.com/airos-works/aurora/releases/download/latest/aurora-0.3.0-5-arm64.hpkg) |
+| arm64 | [aurora-0.3.0-6-arm64.hpkg](https://github.com/airos-works/aurora/releases/download/latest/aurora-0.3.0-6-arm64.hpkg) |
 | arm64 | [pgadmin4-9.18-4-arm64.hpkg](https://github.com/airos-works/aurora/releases/download/latest/pgadmin4-9.18-4-arm64.hpkg) |
-| x86_64 | [aurora-0.3.0-5-x86_64.hpkg](https://github.com/airos-works/aurora/releases/download/latest/aurora-0.3.0-5-x86_64.hpkg) |
+| x86_64 | [aurora-0.3.0-6-x86_64.hpkg](https://github.com/airos-works/aurora/releases/download/latest/aurora-0.3.0-6-x86_64.hpkg) |
 | x86_64 | [pgadmin4-9.18-4-x86_64.hpkg](https://github.com/airos-works/aurora/releases/download/latest/pgadmin4-9.18-4-x86_64.hpkg) |
 
-Install with `pkgman install <file>`, or copy the file into `/boot/system/packages`. Haiku SDK: x86_64 hrev60207-2106-gf8eac33d0a, arm64 hrev60207-2108-g3fb3a0db12.
+Install with `pkgman install <file>`, or copy the file into `/boot/system/packages`. Haiku SDK: x86_64 hrev60207-2472-gb062da1ebf, arm64 hrev60207-2472-gb062da1ebf.
 <!-- airos-ci:latest-builds:end -->
 
 ## Running an app
