@@ -213,13 +213,24 @@ class App extends Emitter {
       spawn(execPath, args, { detached: true, stdio: 'ignore', cwd: process.cwd(), env: process.env }).unref();
     }
     const finish = () => process.exit(code);
-    if (state.host && !state.host.exited) {
-      state.host.once('exit', finish);
-      state.host.send('app.quit');
-      setTimeout(finish, 4000).unref();
-    } else {
-      finish();
-    }
+    const stop = () => {
+      if (state.host && !state.host.exited) {
+        state.host.once('exit', finish);
+        state.host.send('app.quit');
+        setTimeout(finish, 4000).unref();
+      } else {
+        finish();
+      }
+    };
+    // A second instance quits as soon as requestSingleInstanceLock returns
+    // false, before its socket has connected: exiting then would leave the
+    // first instance a 'second-instance' with no arguments (a link lost).
+    const message = this._singleInstanceMessage;
+    this._singleInstanceMessage = null;
+    if (message)
+      Promise.race([message, new Promise((resolve) => setTimeout(resolve, 2000))]).then(stop);
+    else
+      stop();
   }
 
   relaunch(options = {}) {
