@@ -84,7 +84,7 @@ function bundle(entry) {
 function bundleSource(entry) {
   const modules = bundle(entry);
   const parts = modules.map((module) =>
-    `[${JSON.stringify(module.file)}, function (exports, require, module, __filename, __dirname, process, Buffer, global) {\n`
+    `[${JSON.stringify(module.file)}, function (exports, require, module, __filename, __dirname, process, Buffer, global, setImmediate, clearImmediate) {\n`
     + `${module.source}\n}, ${JSON.stringify(module.dependencies)}]`);
   return `[${parts.join(',\n')}]`;
 }
@@ -787,9 +787,37 @@ function bridgeRuntime() {
           const result = {};
           for (const key of Object.keys(value))
             result[key] = toMain(value[key]);
+          // A class instance's methods are on its prototype, not its own
+          // keys: a listener object that a native module calls back
+          // (libsignal's chat listeners) needs them. Each becomes a callback
+          // that calls the method on the page's object.
+          for (let proto = Object.getPrototypeOf(value); proto && proto !== Object.prototype;
+            proto = Object.getPrototypeOf(proto)) {
+            for (const key of Object.getOwnPropertyNames(proto)) {
+              if (key === 'constructor' || Object.prototype.hasOwnProperty.call(result, key))
+                continue;
+              const descriptor = Object.getOwnPropertyDescriptor(proto, key);
+              if (descriptor && typeof descriptor.value === 'function')
+                result[key] = toMain(methodOf(value, key));
+            }
+          }
           return { $a: 'o', v: result };
         }
         return encode(value);
+      }
+
+      // The same function for an object's method every time, so the main
+      // process gets one callback for it however often the object goes there.
+      const methods = new WeakMap();
+      function methodOf(object, key) {
+        let bound = methods.get(object);
+        if (!bound) {
+          bound = new Map();
+          methods.set(object, bound);
+        }
+        if (!bound.has(key))
+          bound.set(key, (...args) => object[key](...args));
+        return bound.get(key);
       }
 
       return {
@@ -1198,7 +1226,10 @@ function bridgeRuntime() {
         const module = { exports: {}, id: file, filename: file, loaded: false };
         cache.set(index, module);
         const directory = file.slice(0, file.lastIndexOf('/')) || '/';
-        factory.call(module.exports, module.exports, requireFrom(index), module, file, directory, pageProcess, Buffer, window);
+        // Node.js's globals as a preload has them (setImmediate too: Signal's
+        // preload uses it), without putting them on the page's window.
+        factory.call(module.exports, module.exports, requireFrom(index), module, file, directory, pageProcess, Buffer, window,
+          setImmediateShim, clearImmediateShim);
         module.loaded = true;
         return module.exports;
       }

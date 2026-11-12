@@ -7,6 +7,9 @@
 const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
+
+// How long a page's sendSync waits for a returnValue a listener sets later.
+const SYNC_REPLY_TIMEOUT = 60 * 1000;
 const { state, createEvent, defaultUserAgent, toFileURL, Emitter } = require('./common');
 const { encode, decode } = require('../serialize');
 const messagePorts = require('./message-ports');
@@ -862,11 +865,41 @@ class WebContents extends Emitter {
     if (body.t === 'remote')
       return this._remoteObjects().request(body);
     const event = this._ipcEvent({ frameUrl: this._url, origin: '' }, body);
+    // Electron's page waits until a listener sets returnValue, which it may
+    // do after an await (Signal's get-config does). The answer goes when it
+    // is set: at once, or later (the request is answered asynchronously).
+    let value;
+    let assigned = false;
+    let settle = null;
+    Object.defineProperty(event, 'returnValue', {
+      get: () => value,
+      set: (next) => {
+        value = next;
+        assigned = true;
+        if (settle)
+          settle();
+      },
+      enumerable: true,
+      configurable: true,
+    });
     const args = decode(body.a) || [];
-    this.emit('ipc-message-sync', event, body.ch, ...args);
-    if (!this.ipc.emit(body.ch, event, ...args))
-      mainIpc().emit(body.ch, event, ...args);
-    return { v: encode(event.returnValue) };
+    let handled = this.emit('ipc-message-sync', event, body.ch, ...args);
+    if (this.ipc.emit(body.ch, event, ...args))
+      handled = true;
+    else if (mainIpc().emit(body.ch, event, ...args))
+      handled = true;
+    if (assigned || !handled)
+      return { v: encode(value) };
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        process.stderr.write(`[aurora] sendSync('${body.ch}'): no returnValue after ${SYNC_REPLY_TIMEOUT / 1000} s\n`);
+        resolve({ v: encode(value) });
+      }, SYNC_REPLY_TIMEOUT);
+      settle = () => {
+        clearTimeout(timer);
+        resolve({ v: encode(value) });
+      };
+    });
   }
 
   // Node.js modules served to this page's preload scripts (remote.js).

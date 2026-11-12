@@ -38,7 +38,36 @@ function applyAppOverrides({ execPath = true } = {}) {
   }
   installNativeModuleLoader(process.env.AURORA_NATIVE_SHIMS);
   installWatchFallback();
+  require('./compat').installCompat();
+  installWorkerSetup();
   return nodePath;
+}
+
+// Worker threads (worker_threads.Worker) start with a Node.js of their own:
+// what applyAppOverrides did here (the app's platform, native modules, the
+// globals of compat.js) is not there. Each new worker first runs worker.js,
+// which does it again (Signal's database worker loads its native module by
+// platform, and its code uses URLPattern).
+function installWorkerSetup() {
+  const workerThreads = require('worker_threads');
+  if (workerThreads.Worker.aurora)
+    return;
+  const Base = workerThreads.Worker;
+  const setup = path.join(__dirname, 'worker.js');
+  class Worker extends Base {
+    constructor(filename, options) {
+      const settings = Object.assign({}, options);
+      // A worker's default is the parent's execArgv.
+      const execArgv = Array.isArray(settings.execArgv) ? settings.execArgv : process.execArgv;
+      settings.execArgv = execArgv.includes(setup) ? execArgv : ['--require', setup, ...execArgv];
+      super(filename, settings);
+    }
+  }
+  Object.defineProperty(Worker, 'name', { value: 'Worker' });
+  Worker.aurora = true;
+  workerThreads.Worker = Worker;
+  // import { Worker } from 'node:worker_threads' sees it too.
+  require('module').syncBuiltinESMExports();
 }
 
 // An app the roster starts from a server (not from Deskbar or a shell) can
@@ -236,4 +265,4 @@ function installModuleHooks(cjsEntry, esmEntry) {
 }
 
 module.exports = { cacheRoot, applyAppOverrides, completeEnvironment, installWatchFallback, installNativeModuleLoader,
-  resolveAsar, installModuleHooks, ELECTRON_NAMES };
+  installWorkerSetup, resolveAsar, installModuleHooks, ELECTRON_NAMES };

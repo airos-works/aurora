@@ -9,7 +9,7 @@ const net = {
   isOnline: () => true,
   get online() { return true; },
   request: (options, callback) => require('./net-request').request(options, callback),
-  resolveHost: (host) => require('dns').promises.lookup(host, { all: true }).then((addresses) => ({ endpoints: addresses })),
+  resolveHost: (host, options) => require('./resolve-host').resolveHost(host, options),
 };
 
 const systemPreferences = {

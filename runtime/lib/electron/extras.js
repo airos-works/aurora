@@ -205,8 +205,23 @@ Object.assign(autoUpdater, {
   quitAndInstall() { require('./app').app.quit(); },
 });
 
+// Crashpad's directory as Electron's crashReporter.start() leaves it (apps
+// such as Signal list its pending reports at startup). Aurora writes no
+// reports: Haiku's debug_server handles crashes.
+function crashDumpsDirectory() {
+  const directory = require('./app').app.getPath('crashDumps');
+  for (const sub of ['', 'pending', 'completed', 'attachments']) {
+    try {
+      fs.mkdirSync(path.join(directory, sub), { recursive: true });
+    } catch {}
+  }
+  return directory;
+}
+
 const crashReporter = {
-  start() {},
+  start() {
+    crashDumpsDirectory();
+  },
   getLastCrashReport: () => null,
   getUploadedReports: () => [],
   getUploadToServer: () => false,
@@ -214,7 +229,7 @@ const crashReporter = {
   addExtraParameter() {},
   removeExtraParameter() {},
   getParameters: () => ({}),
-  getCrashesDirectory: () => require('./app').app.getPath('crashDumps'),
+  getCrashesDirectory: () => crashDumpsDirectory(),
 };
 
 const contentTracing = {
@@ -267,7 +282,7 @@ const net = {
   isOnline: () => true,
   get online() { return true; },
   request: (options, callback) => require('./net-request').request(options, callback),
-  resolveHost: (host) => require('dns').promises.lookup(host, { all: true }).then((addresses) => ({ endpoints: addresses })),
+  resolveHost: (host, options) => require('./resolve-host').resolveHost(host, options),
 };
 
 const netLog = {

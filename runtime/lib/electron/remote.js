@@ -8,8 +8,9 @@
 // such a require() is served here, in the main process, and the page gets a
 // proxy. Every property read, call and `new` on a proxy is a synchronous
 // request (the same channel as ipcRenderer.sendSync); functions the page
-// passes become stubs that call back into the page; promises settle in the
-// page when they settle here.
+// passes become stubs that call back into the page (a class instance's
+// methods too: native modules call listener objects back); promises settle
+// in the page when they settle here.
 //
 // Values cross by copy when they are data (primitives, arrays, plain objects,
 // Buffers, dates, errors, fs.Stats and fs.Dirent) and by reference otherwise

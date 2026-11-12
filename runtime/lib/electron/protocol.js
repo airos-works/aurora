@@ -114,7 +114,7 @@ async function schemeRequest(message) {
     let reply = { v: { $a: 'u' } };
     if (window) {
       try {
-        reply = window.webContents._syncMessage(JSON.parse(body ? body.toString('utf8') : '{}'), message);
+        reply = await window.webContents._syncMessage(JSON.parse(body ? body.toString('utf8') : '{}'), message);
       } catch (error) {
         process.stderr.write(`[aurora] sendSync failed: ${error.stack || error}\n`);
       }

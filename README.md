@@ -73,6 +73,13 @@ builds a package that uses Haiku's own Git. Its pages have Node.js
 (`nodeIntegration`), its credentials go to Haiku's key store, and the
 browser hands it back the sign-in link.
 
+Signal Desktop runs as an air/OS app: its fork
+([airos-works/Signal-Desktop](https://github.com/airos-works/Signal-Desktop),
+branch `airos`, `scripts/haiku`) builds a package with libsignal and SQLCipher
+cross-built for Haiku. It links to a phone with its QR code and keeps its
+encrypted database as on Linux; voice and video calls are not available
+(RingRTC is WebRTC, which Haiku does not have).
+
 Discord's own desktop client also runs, unmodified, up to its login screen
 (`docs/DISCORD.md`). Its installer, `ports/discord`, downloads the client from
 Discord's servers onto the user's machine. Voice and video need Discord's
@@ -121,6 +128,13 @@ its Python server.
     child processes, sockets and servers as emitters and streams of the page.
     A `file:` page starts its workers from its own files, and a native
     module loads in the main process (`process.dlopen`).
+  - **Newer Electron releases:** Electron 40 and later run Node.js 24;
+    Aurora runs the system's Node.js 22 and adds what such apps use of 24
+    (`URLPattern`, `Intl.Locale`'s `getTextInfo()` and the other
+    information methods: `lib/compat.js`) in the main process, utility
+    processes and their worker threads. Worker threads also get the app's
+    platform and native module stand-ins. `sendSync` waits for a
+    `returnValue` a listener sets after an `await`, as Electron does.
   - **Native module stand-ins:** keytar keeps passwords in Haiku's key store
     (`runtime/lib/shims/keytar.js`, through the host, which keystore_server
     knows as the app); `AURORA_NATIVE_SHIMS` adds an app's own.

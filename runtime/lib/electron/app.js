@@ -107,7 +107,15 @@ class App extends Emitter {
     case 'pictures':
     case 'videos': return userHome;
     case 'logs': return path.join(this.getPath('userData'), 'logs');
-    case 'crashDumps': return path.join(this.getPath('userData'), 'Crashpad');
+    case 'crashDumps': {
+      // Electron's crash reporter makes it at startup; apps expect it there
+      // (Signal takes its realpath).
+      const directory = path.join(this.getPath('userData'), 'Crashpad');
+      try {
+        fs.mkdirSync(directory, { recursive: true });
+      } catch {}
+      return directory;
+    }
     case 'recent': return path.join(this.getPath('userData'), 'Recent');
     case 'cache': return (state.paths && state.paths.cache) || path.join(userHome, 'config', 'cache');
     default:
